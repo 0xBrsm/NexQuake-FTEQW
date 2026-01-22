@@ -38,28 +38,28 @@
     <script src="/config.js"></script>
     <script>
       (function () {
-        function buildConnectUrl(cfg) {
-          if (cfg && cfg.connectOverride) return cfg.connectOverride;
-          const host = (cfg && cfg.serverHost) || window.location.hostname;
-          const port = (cfg && cfg.serverPort) || "27500";
-          const schemePref = (cfg && cfg.wsScheme) || "auto";
-          const scheme =
-            schemePref === "ws" || schemePref === "wss"
-              ? schemePref
-              : window.location.protocol === "https:"
-                ? "wss"
-                : "ws";
-          return `${scheme}://${host}:${port}/`;
+        const cfg = window.WEBQUAKE || {};
+        const manifestUrl = cfg.manifestUrl || "/index.fmf";
+
+        function makeMastersTxt(masterHttpUrl) {
+          // Format:
+          // <url> masterhttp:nq <name>
+          // The backend URL must be CORS-allowed if it is cross-origin.
+          if (!masterHttpUrl) return null;
+          return `${masterHttpUrl} masterhttp:nq Backend Servers\n`;
         }
 
-        const cfg = window.FTEQW_WEBQUAKE || {};
-        const connectUrl = buildConnectUrl(cfg);
-        const manifestUrl = cfg.manifestUrl || "/index.fmf";
+        const mastersTxt = makeMastersTxt(cfg.masterHttpUrl);
 
         window.Module = {
           autostart: true,
           canvas: document.getElementById("canvas"),
-          arguments: ["+connect", connectUrl, "-manifest", manifestUrl],
+          arguments: ["-manifest", manifestUrl],
+          files: mastersTxt
+            ? {
+                "masters.txt": new TextEncoder().encode(mastersTxt).buffer,
+              }
+            : {},
           print: function (msg) {
             console.log(msg);
           },
@@ -84,4 +84,3 @@
     </script>
   </body>
 </html>
-

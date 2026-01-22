@@ -72,3 +72,4 @@ Client mode:
 - `SERVER_PORT` (default: `27500`)
 - `WS_SCHEME` (`auto`|`ws`|`wss`, default: `auto`)
 - `CONNECT` (optional full override, e.g. `ws://example.com:27500/`)
+- `MASTER_HTTP_URL` (optional) URL that returns a text server list for the in-game server browser (HTTP master poller); must be CORS-allowed if cross-origin.

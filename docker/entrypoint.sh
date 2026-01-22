@@ -20,6 +20,7 @@ write_client_config() {
   : "${SERVER_PORT:=27500}"
   : "${WS_SCHEME:=auto}"
   : "${CONNECT:=}"
+  : "${MASTER_HTTP_URL:=}"
 
   js_quote() {
     # Minimal JS string escaping for env-provided values.
@@ -35,6 +36,7 @@ window.WEBQUAKE = {
   serverPort: $(js_quote "${SERVER_PORT:-27500}"),
   wsScheme: $(js_quote "${WS_SCHEME:-auto}"),
   connectOverride: $(js_quote "$CONNECT"),
+  masterHttpUrl: $(js_quote "$MASTER_HTTP_URL"),
   manifestUrl: "/index.fmf"
 };
 EOF
@@ -127,7 +129,7 @@ case "$MODE" in
       -basedir "$BASEDIR" \
       -game "$GAMEDIR" \
       +set sv_port_tcp "$SERVER_PORT" \
-      +set sv_public "$SERVER_PUBLIC" \     
+      +set sv_public "$SERVER_PUBLIC" \
       $SERVER_ARGS \
       "$@"
     ;;
