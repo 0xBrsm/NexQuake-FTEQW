@@ -1,0 +1,247 @@
+diff --git a/engine/client/m_master.c b/engine/client/m_master.c
+index 84fc722..103b82d 100644
+--- a/engine/client/m_master.c
++++ b/engine/client/m_master.c
+@@ -109,18 +109,11 @@ typedef struct {
+ 	menupicture_t *mappic;
+ } serverlist_t;
+ 
+-static void SL_DrawColumnTitle (int *x, int y, int xlen, int mx, char *str, qboolean recolor, qbyte clr, qboolean *filldraw)
++static void SL_DrawColumnTitle (int xmin, int y, int xlen, int mx, char *str, qboolean recolor, qbyte clr, qboolean *filldraw)
+ {
+-	int xmin;
+-
+-	if (x == NULL)
+-		xmin = 0;
+-	else
+-		xmin = (*x - xlen);
+-
+ 	if (recolor)
+ 		str = va("^&%c-%s", clr, str);
+-	if (mx >= xmin && !(*filldraw))
++	if (mx >= xmin && mx < xmin + xlen && !(*filldraw))
+ 	{
+ 		*filldraw = true;
+ 		R2D_ImageColours((sin(realtime*4.4)*0.25)+0.5, (sin(realtime*4.4)*0.25)+0.5, 0.08, 1.0);
+@@ -128,9 +121,6 @@ static void SL_DrawColumnTitle (int *x, int y, int xlen, int mx, char *str, qboo
+ 		R2D_ImageColours(1,1,1,1);
+ 	}
+ 	Draw_FunStringWidth(xmin, y, str, xlen, false, false);
+-
+-	if (x != NULL)
+-		*x -= xlen + 8;
+ }
+ 
+ static void SL_TitlesDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -139,28 +129,30 @@ static void SL_TitlesDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 	int mx = mousecursor_x;
+ 	qboolean filldraw = false;
+ 	qbyte clr;
++	int left = x;
++	int right = x + ths->common.width;
+ 
+ 	if (Master_GetSortDescending())
+ 		clr = 'D';
+ 	else
+ 		clr = 'B';
+-	x = ths->common.width;
+-	if ((mx > x || mousecursor_y < y || mousecursor_y >= y+8) && !serverpreview)
++	if ((mx > right || mx < left || mousecursor_y < y || mousecursor_y >= y+8) && !serverpreview)
+ 		filldraw = true;
+-	if (sb_showtimelimit.value)	{SL_DrawColumnTitle(&x, y, 3*8, mx, "tl", (sf==SLKEY_TIMELIMIT), clr, &filldraw);}
+-	if (sb_showfraglimit.value)	{SL_DrawColumnTitle(&x, y, 3*8, mx, "fl", (sf==SLKEY_FRAGLIMIT), clr, &filldraw);}
+-	if (sb_showplayers.value)	{SL_DrawColumnTitle(&x, y, 5*8, mx, "plyrs", (sf==SLKEY_NUMHUMANS), clr, &filldraw);}
+-	if (sb_showmap.value)		{SL_DrawColumnTitle(&x, y, 8*8, mx, "map", (sf==SLKEY_MAP), clr, &filldraw);}
+-	if (sb_showgamedir.value)	{SL_DrawColumnTitle(&x, y, 8*8, mx, "gamedir", (sf==SLKEY_GAMEDIR), clr, &filldraw);}
+-	if (sb_showping.value)		{SL_DrawColumnTitle(&x, y, 3*8, mx, "png", (sf==SLKEY_PING), clr, &filldraw);}
+-	if (sb_showaddress.value)	{SL_DrawColumnTitle(&x, y, 21*8, mx, "address", (sf==SLKEY_ADDRESS), clr, &filldraw);}
+-	SL_DrawColumnTitle(NULL, y, x, mx, "hostname ", (sf==SLKEY_NAME), clr, &filldraw);
++	x = right;
++	if (sb_showtimelimit.value)	{x -= 3*8; SL_DrawColumnTitle(x, y, 3*8, mx, "tl", (sf==SLKEY_TIMELIMIT), clr, &filldraw); x -= 8;}
++	if (sb_showfraglimit.value)	{x -= 3*8; SL_DrawColumnTitle(x, y, 3*8, mx, "fl", (sf==SLKEY_FRAGLIMIT), clr, &filldraw); x -= 8;}
++	if (sb_showplayers.value)	{x -= 5*8; SL_DrawColumnTitle(x, y, 5*8, mx, "plyrs", (sf==SLKEY_NUMHUMANS), clr, &filldraw); x -= 8;}
++	if (sb_showmap.value)		{x -= 8*8; SL_DrawColumnTitle(x, y, 8*8, mx, "map", (sf==SLKEY_MAP), clr, &filldraw); x -= 8;}
++	if (sb_showgamedir.value)	{x -= 8*8; SL_DrawColumnTitle(x, y, 8*8, mx, "gamedir", (sf==SLKEY_GAMEDIR), clr, &filldraw); x -= 8;}
++	if (sb_showping.value)		{x -= 3*8; SL_DrawColumnTitle(x, y, 3*8, mx, "png", (sf==SLKEY_PING), clr, &filldraw); x -= 8;}
++	if (sb_showaddress.value)	{x -= 21*8; SL_DrawColumnTitle(x, y, 21*8, mx, "address", (sf==SLKEY_ADDRESS), clr, &filldraw); x -= 8;}
++	SL_DrawColumnTitle(left, y, x-left, mx, "hostname ", (sf==SLKEY_NAME), clr, &filldraw);
+ }
+ 
+ static qboolean SL_TitlesKey (menucustom_t *ths, emenu_t *menu, int key, unsigned int unicode)
+ {
+ 	int x;
+-	int mx = mousecursor_x/8;
++	int mx = (mousecursor_x - ths->common.posx)/8;
+ 	int sortkey;
+ 	qboolean descending;
+ 	char sortchar = 0;
+@@ -170,7 +162,7 @@ static qboolean SL_TitlesKey (menucustom_t *ths, emenu_t *menu, int key, unsigne
+ 
+ 	do {
+ 		x = ths->common.width/8;
+-		if (mx > x) return false;	//out of bounds
++		if (mx < 0 || mx > x) return false;	//out of bounds
+ 		if (sb_showtimelimit.value)	{x-=4;if (mx > x) {sortkey = SLKEY_TIMELIMIT;	sortchar='t';	break;}}
+ 		if (sb_showfraglimit.value)	{x-=4;if (mx > x) {sortkey = SLKEY_FRAGLIMIT;	sortchar='f';	break;}}
+ 		if (sb_showplayers.value)	{x-=6;if (mx > x) {sortkey = SLKEY_NUMHUMANS;	sortchar='p';	break;}}
+@@ -292,6 +284,8 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 	int thisone = ths->dint + info->scrollpos;
+ 	servertypes_t stype;
+ 	char adr[MAX_ADR_SIZE];
++	int left = x;
++	int right = x + ths->common.width;
+ 
+ 	if (sb_filtertext.modifiedcount != info->filtermodcount)
+ 		CalcFilters(menu);
+@@ -299,7 +293,6 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 	si = Master_SortedServer(thisone);
+ 	if (si)
+ 	{
+-		x = ths->common.width;
+ 		stype = flagstoservertype(si->special);
+ 		if (thisone == info->selectedpos)
+ 		{
+@@ -309,7 +302,7 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 				serverhighlight[(int)stype][2],
+ 				1.0));
+ 		}
+-		else if (thisone == info->scrollpos + (int)(mousecursor_y-info->servers_top)/8 && mousecursor_x < x && !serverpreview)
++		else if (thisone == info->scrollpos + (int)(mousecursor_y-info->servers_top)/8 && mousecursor_x >= left && mousecursor_x < right && !serverpreview)
+ 			R2D_ImageColours(SRGBA((sin(realtime*4.4)*0.25)+0.5, (sin(realtime*4.4)*0.25)+0.5, 0.08, sb_alpha.value));
+ 		else if (selectedserver.inuse && NET_CompareAdr(&si->adr, &selectedserver.adr) && !strcmp(si->brokerid, selectedserver.brokerid))
+ 			R2D_ImageColours(SRGBA(((sin(realtime*4.4)*0.25)+0.5) * 0.5, ((sin(realtime*4.4)*0.25)+0.5)*0.5, 0.08*0.5, sb_alpha.value));
+@@ -321,17 +314,17 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 				serverbackcolor[(int)stype * 2 + (thisone & 1)][2],
+ 				sb_alpha.value));
+ 		}
+-		R2D_FillBlock(0, y, ths->common.width, 8);
++		R2D_FillBlock(left, y, ths->common.width, 8);
+ 
+ 		R2D_ImageColours(1,1,1,1);
+-		if (sb_showtimelimit.value)	{Draw_FunStringWidth((x-3*8), y, va("%i", si->tl), 3*8, false, false); x-=4*8;}
+-		if (sb_showfraglimit.value)	{Draw_FunStringWidth((x-3*8), y, va("%i", si->fl), 3*8, false, false); x-=4*8;}
+-		if (sb_showplayers.value)	{Draw_FunStringWidth((x-5*8), y, va("%2i/%2i", si->numhumans, si->maxplayers), 5*8, false, false); x-=6*8;}
+-		if (sb_showmap.value)		{Draw_FunStringWidth((x-8*8), y, si->map, 8*8, false, false); x-=9*8;}
+-		if (sb_showgamedir.value)	{Draw_FunStringWidth((x-8*8), y, si->gamedir, 8*8, false, false); x-=9*8;}
+-		if (sb_showping.value)		{Draw_FunStringWidth((x-3*8), y, *si->brokerid?"---":va("%i", si->ping), 3*8, false, false); x-=4*8;}
+-		if (sb_showaddress.value)	{Draw_FunStringWidth((x-21*8), y, Master_ServerToString(adr, sizeof(adr), si), 21*8, false, false); x-=22*8;}
+-		Draw_FunStringWidth(0, y, si->name, x, false, false);
++		if (sb_showtimelimit.value)	{Draw_FunStringWidth((right-3*8), y, va("%i", si->tl), 3*8, false, false); right-=4*8;}
++		if (sb_showfraglimit.value)	{Draw_FunStringWidth((right-3*8), y, va("%i", si->fl), 3*8, false, false); right-=4*8;}
++		if (sb_showplayers.value)	{Draw_FunStringWidth((right-5*8), y, va("%2i/%2i", si->numhumans, si->maxplayers), 5*8, false, false); right-=6*8;}
++		if (sb_showmap.value)		{Draw_FunStringWidth((right-8*8), y, si->map, 8*8, false, false); right-=9*8;}
++		if (sb_showgamedir.value)	{Draw_FunStringWidth((right-8*8), y, si->gamedir, 8*8, false, false); right-=9*8;}
++		if (sb_showping.value)		{Draw_FunStringWidth((right-3*8), y, *si->brokerid?"---":va("%i", si->ping), 3*8, false, false); right-=4*8;}
++		if (sb_showaddress.value)	{Draw_FunStringWidth((right-21*8), y, Master_ServerToString(adr, sizeof(adr), si), 21*8, false, false); right-=22*8;}
++		Draw_FunStringWidth(left, y, si->name, right-left, false, false);
+ 	}
+ }
+ void MC_EditBox_Key(menuedit_t *edit, int key, unsigned int unicode);
+@@ -1221,6 +1214,8 @@ void M_Menu_ServerList2_f(void)
+ 	qboolean descending;
+ 	int sortkey;
+ 	char *sc;
++	int panel_x, panel_w;
++	int list_w;
+ 
+ 	if (!qrenderer)
+ 	{
+@@ -1240,18 +1235,32 @@ void M_Menu_ServerList2_f(void)
+ 
+ 	info = (serverlist_t*)(menu + 1);
+ 
++	panel_w = vid.width;
++	if (vid.height)
++	{
++		int maxw = (vid.height*4)/3;
++		if (panel_w > maxw)
++			panel_w = maxw;
++	}
++	if (panel_w < 320+8)
++		panel_w = 320+8;
++	panel_x = (vid.width - panel_w)/2;
++	if (panel_x < 0)
++		panel_x = 0;
++	list_w = panel_w - 8;
++
+ 	y = 16;
+-	cust = MC_AddCustom(menu, 0, y, NULL, 0, NULL);
++	cust = MC_AddCustom(menu, panel_x, y, NULL, 0, NULL);
+ 	cust->draw = SL_TitlesDraw;
+ 	cust->key = SL_TitlesKey;
+ 	cust->common.height = 8;
+-	cust->common.width = vid.width-8;
++	cust->common.width = list_w;
+ 	y+=8;
+ 
+ 	info->servers_top = y;
+ 	info->visibleslots = (vid.height-info->servers_top - 64);
+ 
+-	cust = MC_AddCustom(menu, vid.width-8, 16, NULL, 0, NULL);
++	cust = MC_AddCustom(menu, panel_x + list_w, 16, NULL, 0, NULL);
+ 	cust->draw = SL_SliderDraw;
+ 	cust->key = SL_SliderKey;
+ 	cust->common.height = info->visibleslots;
+@@ -1260,19 +1269,19 @@ void M_Menu_ServerList2_f(void)
+ 	info->visibleslots = (info->visibleslots-8)/8;
+ 	for (i = 0, y = info->servers_top; i <= info->visibleslots; y +=8, i++)
+ 	{
+-		cust = MC_AddCustom(menu, 0, y, NULL, i, NULL);
++		cust = MC_AddCustom(menu, panel_x, y, NULL, i, NULL);
+ 		if (i==0)
+ 			menu->selecteditem = (menuoption_t*)&cust->common;
+ 		cust->draw = SL_ServerDraw;
+ 		cust->key = SL_ServerKey;
+ 		cust->common.height = 8;
+-		cust->common.width = vid.width-8;
++		cust->common.width = list_w;
+ 		cust->common.noselectionsound = true;
+ 	}
+ 	menu->dontexpand = true;
+ 
+ 	i = 0;
+-	for (x = 256; x < vid.width-64; x += 128)
++	for (x = panel_x + 256; x < panel_x + panel_w - 64; x += 128)
+ 	{
+ 		for (y = vid.height-64+8; y < vid.height; y += 8, i++)
+ 		{
+@@ -1317,7 +1326,7 @@ void M_Menu_ServerList2_f(void)
+ 	info->filter[SLFILTER_HIDEEMPTY] = !!sb_hideempty.value;
+ 	info->filter[SLFILTER_HIDEFULL] = !!sb_hidefull.value;
+ 
+-	info->mappic = (menupicture_t *)MC_AddPicture(menu, vid.width - 64, vid.height - 64, 64, 64, "012345678901234567890123456789012");
++	info->mappic = (menupicture_t *)MC_AddPicture(menu, panel_x + panel_w - 64, vid.height - 64, 64, 64, "012345678901234567890123456789012");
+ 
+ 	descending = false;
+ 
+diff --git a/engine/client/m_multi.c b/engine/client/m_multi.c
+index 98d514e..cc65aa5 100644
+--- a/engine/client/m_multi.c
++++ b/engine/client/m_multi.c
+@@ -61,7 +61,7 @@ void M_Menu_MultiPlayer_f (void)
+ 	}
+ 	else
+ #endif
+-		if (QBigFontWorks())
++	if (QBigFontWorks())
+ 	{
+ 		MC_AddPicture(menu, 16, 4, 32, 144, "gfx/qplaque.lmp");
+ 		MC_AddCenterPicture(menu, 4, 24, "gfx/p_multi.lmp");
+@@ -72,7 +72,6 @@ void M_Menu_MultiPlayer_f (void)
+ #ifdef HAVE_PACKET
+ 		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Quick Connect"), "quickconnect qw\n");mgt+=20;
+ #endif
+-		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("New Server  "),	"menu_newmulti\n");mgt+=20;
+ 		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Player Setup"),	"menu_setup\n");mgt+=20;
+ 		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Demos       "),	"menu_demo\n");mgt+=20;
+ 
+@@ -98,9 +97,6 @@ void M_Menu_MultiPlayer_f (void)
+ 		menu->selecteditem = (menuoption_t*)b;
+ 		b->common.height = 20;
+ 		b->common.width = width;
+-		b = MC_AddConsoleCommand(menu, 72, 320, 52, "", "menu_newmulti\n");
+-		b->common.height = 20;
+-		b->common.width = width;
+ 		b = MC_AddConsoleCommand(menu, 72, 320, 72, "", "menu_setup\n");
+ 		b->common.height = 20;
+ 		b->common.width = width;

@@ -18,6 +18,9 @@ RUN if [ -n "${FTEQW_REF}" ]; then \
     else \
       git clone --depth 1 "${FTEQW_REPO}" fteqw; \
     fi
+COPY patches/ /tmp/patches/
+WORKDIR /build/fteqw
+RUN if ls /tmp/patches/*.patch >/dev/null 2>&1; then git apply /tmp/patches/*.patch; fi
 WORKDIR /build/fteqw/engine
 RUN make sv-rel
 
@@ -33,6 +36,9 @@ RUN if [ -n "${FTEQW_REF}" ]; then \
     else \
       git clone --depth 1 "${FTEQW_REPO}" fteqw; \
     fi
+COPY patches/ /tmp/patches/
+WORKDIR /build/fteqw
+RUN if ls /tmp/patches/*.patch >/dev/null 2>&1; then git apply /tmp/patches/*.patch; fi
 WORKDIR /build/fteqw/engine
 RUN make web-rel
 
