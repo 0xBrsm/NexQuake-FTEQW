@@ -1,11 +1,19 @@
 # fteqw-WebQuake
 
-Single Docker image that can run:
+Single Docker image for **NetQuake** that can run:
 
-- `server`: headless FTEQW dedicated server (native Linux, `amd64`/`arm64`)
-- `client`: WebAssembly client served by nginx (game data served from a bind mount)
+- `all` (default): NetQuake dedicated server + WebAssembly client (served by nginx)
+- `server`: headless dedicated server only
+- `client`: WebAssembly client only
 
-The image does **not** ship any game data. Mount your Quake data into both containers.
+The image does **not** ship any game data. Mount your Quake data into the container.
+
+## How it works
+
+- The container serves the WASM client over HTTP on `:26000`.
+- nginx reverse-proxies websocket gameplay traffic from `ws(s)://host/nq` to an internal `fteqw-sv` instance (not exposed publicly).
+- The web client fetches packages from the container at `/gamedata/...` using a generated `/index.fmf` manifest.
+- The in-game server browser is forced to a same-origin server list at `/servers.txt` (so it shows only the backend servers you run).
 
 ## Quickstart (docker compose)
 
@@ -16,26 +24,26 @@ The image does **not** ship any game data. Mount your Quake data into both conta
 docker compose up --build
 ```
 
-- Web client: `http://localhost:8080`
-- Server port: `27500/tcp` (web clients use `ws://`)
+- Web client: `http://localhost:26000`
+- Gameplay websocket: `ws://localhost:26000/nq`
 
 ## Quickstart (docker run)
 
-Server:
+Server + client (default):
 
 ```bash
 docker run --rm -it \
   -v /path/to/quake:/gamedata:ro \
-  -p 27500:27500 \
-  fteqw-webquake:latest server
+  -p 26000:26000 \
+  fteqw-webquake:latest
 ```
 
-Client:
+Client-only:
 
 ```bash
 docker run --rm -it \
   -v /path/to/quake:/gamedata:ro \
-  -p 8080:8080 \
+  -p 26000:26000 \
   fteqw-webquake:latest client
 ```
 
@@ -62,14 +70,18 @@ Common:
 - `GAMEDIR` (default: `id1`)
 - `BASEGAMES` (default: empty, comma-separated)
 
-Server mode:
-- `SERVER_PORT` (default: `27500`) TCP listen port (websocket clients)
+Modes:
+- `MODE` (`all`|`server`|`client`, default: `all`)
+
+Server (applies to `all` and `server`):
+- `NQ_PORT` (default: `27500`) NetQuake websocket server port (internal in `all` mode; publish it only if you run `server` directly)
 - `SERVER_PUBLIC` (default: `0`)
 - `SERVER_ARGS` extra args appended to the server commandline
 
-Client mode:
+Client (applies to `all` and `client`):
+- `SERVER_PORT` (default: `26000`) public port used for UI/legacy connection overrides
 - `SERVER_HOST` (default: empty ⇒ use `window.location.hostname`)
-- `SERVER_PORT` (default: `27500`)
 - `WS_SCHEME` (`auto`|`ws`|`wss`, default: `auto`)
-- `CONNECT` (optional full override, e.g. `ws://example.com:27500/`)
-- `MASTER_HTTP_URL` (optional) URL that returns a text server list for the in-game server browser (HTTP master poller); must be CORS-allowed if cross-origin.
+- `CONNECT` (optional full override, e.g. `ws://example.com:26000/nq`)
+- `SERVER_LIST_URL` (optional) URL that returns a plaintext server list for the in-game browser; default is same-origin `/servers.txt`
+- `MASTER_HTTP_URL` (optional) legacy name for `SERVER_LIST_URL`

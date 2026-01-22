@@ -55,9 +55,7 @@ RUN chmod +x /opt/fteqw/bin/fteqw-sv /opt/fteqw/entrypoint.sh \
 USER fteqw
 WORKDIR /opt/fteqw
 
-EXPOSE 8080/tcp
-EXPOSE 27500/tcp
-EXPOSE 27500/udp
+EXPOSE 26000/tcp
 
 ENTRYPOINT ["/opt/fteqw/entrypoint.sh"]
-CMD ["client"]
+CMD ["all"]

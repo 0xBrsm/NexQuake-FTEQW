@@ -1,6 +1,6 @@
 .git
 .gitignore
-game
+gamedata
+gamedata/**
 **/node_modules
 **/.DS_Store
-

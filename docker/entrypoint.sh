@@ -4,7 +4,7 @@ set -euo pipefail
 MODE="${MODE:-}"
 if [ $# -ge 1 ]; then
   case "$1" in
-    server|client)
+    all|server|client)
       MODE="$1"
       shift
       ;;
@@ -12,15 +12,16 @@ if [ $# -ge 1 ]; then
 fi
 
 if [ -z "$MODE" ]; then
-  MODE="client"
+  MODE="all"
 fi
 
 write_client_config() {
-  : "${SERVER_HOST:=}"
-  : "${SERVER_PORT:=27500}"
+  : "${SERVER_HOST:=}"          # optional explicit host override for UI/legacy uses
+  : "${SERVER_PORT:=26000}"     # public port (nginx) seen by browsers
   : "${WS_SCHEME:=auto}"
   : "${CONNECT:=}"
-  : "${MASTER_HTTP_URL:=}"
+  : "${SERVER_LIST_URL:=}"      # preferred name
+  : "${MASTER_HTTP_URL:=}"      # backwards-compat
 
   js_quote() {
     # Minimal JS string escaping for env-provided values.
@@ -29,14 +30,17 @@ write_client_config() {
     printf '"%s"' "$s"
   }
 
+  local server_list_url
+  server_list_url="${SERVER_LIST_URL:-$MASTER_HTTP_URL}"
+
   cat > /opt/fteqw/web/config.js <<EOF
 // Generated at container start.
 window.WEBQUAKE = {
   serverHost: $(js_quote "$SERVER_HOST"),
-  serverPort: $(js_quote "${SERVER_PORT:-27500}"),
+  serverPort: $(js_quote "${SERVER_PORT:-26000}"),
   wsScheme: $(js_quote "${WS_SCHEME:-auto}"),
   connectOverride: $(js_quote "$CONNECT"),
-  masterHttpUrl: $(js_quote "$MASTER_HTTP_URL"),
+  serverListUrl: $(js_quote "$server_list_url"),
   manifestUrl: "/index.fmf"
 };
 EOF
@@ -118,17 +122,51 @@ write_manifest() {
 }
 
 case "$MODE" in
+  all)
+    : "${BASEDIR:=/gamedata}"
+    : "${GAMEDIR:=id1}"
+    : "${NQ_PORT:=27500}"        # internal server port (not published)
+    : "${SERVER_PUBLIC:=0}"
+    : "${SERVER_ARGS:=}"
+
+    write_client_config
+    write_manifest
+
+    /opt/fteqw/bin/fteqw-sv \
+      -basedir "$BASEDIR" \
+      -game "$GAMEDIR" \
+      +set sv_serverip 127.0.0.1 \
+      +set net_enable_websockets 1 \
+      +set sv_port_tcp "$NQ_PORT" \
+      +set sv_public "$SERVER_PUBLIC" \
+      $SERVER_ARGS \
+      "$@" &
+    server_pid=$!
+
+    nginx -g 'daemon off;' &
+    nginx_pid=$!
+
+    term() {
+      kill "$nginx_pid" "$server_pid" 2>/dev/null || true
+    }
+    trap 'term; exit 0' INT TERM
+
+    wait "$nginx_pid"
+    term
+    wait "$server_pid" || true
+    ;;
   server)
     : "${BASEDIR:=/gamedata}"
     : "${GAMEDIR:=id1}"
-    : "${SERVER_PORT:=27500}"
+    : "${NQ_PORT:=27500}"
     : "${SERVER_PUBLIC:=0}"
     : "${SERVER_ARGS:=}"
 
     exec /opt/fteqw/bin/fteqw-sv \
       -basedir "$BASEDIR" \
       -game "$GAMEDIR" \
-      +set sv_port_tcp "$SERVER_PORT" \
+      +set net_enable_websockets 1 \
+      +set sv_port_tcp "$NQ_PORT" \
       +set sv_public "$SERVER_PUBLIC" \
       $SERVER_ARGS \
       "$@"
@@ -139,7 +177,7 @@ case "$MODE" in
     exec nginx -g 'daemon off;'
     ;;
   *)
-    echo "Usage: $0 [server|client] [args...]" >&2
+    echo "Usage: $0 [all|server|client] [args...]" >&2
     exit 2
     ;;
 esac

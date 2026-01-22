@@ -41,15 +41,20 @@
         const cfg = window.WEBQUAKE || {};
         const manifestUrl = cfg.manifestUrl || "/index.fmf";
 
-        function makeMastersTxt(masterHttpUrl) {
+        function resolveServerListUrl(serverListUrl) {
+          if (serverListUrl) return serverListUrl;
+          return `${window.location.origin}/servers.txt`;
+        }
+
+        function makeMastersTxt(serverListUrl) {
           // Format:
           // <url> masterhttp:nq <name>
           // The backend URL must be CORS-allowed if it is cross-origin.
-          if (!masterHttpUrl) return null;
-          return `${masterHttpUrl} masterhttp:nq Backend Servers\n`;
+          if (!serverListUrl) return null;
+          return `${serverListUrl} masterhttp:nq Servers\n`;
         }
 
-        const mastersTxt = makeMastersTxt(cfg.masterHttpUrl);
+        const mastersTxt = makeMastersTxt(resolveServerListUrl(cfg.serverListUrl));
 
         window.Module = {
           autostart: true,

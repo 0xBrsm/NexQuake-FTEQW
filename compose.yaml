@@ -1,6 +1,8 @@
 x-env: &env
   GAMEDIR: id1
-  SERVER_PORT: "27500"
+  # Public port served by nginx (mapped via `ports:` below).
+  # Note: nginx listens on 26000 inside the container.
+  SERVER_PORT: "26000"
 
 x-defaults: &defaults
   image: fteqw-webquake
@@ -11,26 +13,12 @@ x-defaults: &defaults
   restart: unless-stopped
   volumes:
     - ./gamedata:/gamedata:ro
-  networks:
-    - q1
 services:
-  server:
+  fteqw:
     <<: *defaults
-    command: ["server"]
+    # Default mode is `all`, which runs both:
+    # - nginx (serves the WASM client)
+    # - fteqw-sv (NetQuake) on 127.0.0.1, reverse-proxied at /nq
+    command: ["all"]
     ports:
-    - 27500:27500
-  client:
-    <<: *defaults
-    command: ["client"]
-    environment:
-      <<: *env
-      # Backend endpoint that returns a text server list for FTE's HTTP master poller.
-      # Each line should start with a server address (e.g. ws://host:27500/) and may include an infostring.
-      # CORS is required if this URL is cross-origin.
-      # Example:
-      # MASTER_HTTP_URL: "https://example.com/nq/servers.txt"
-      MASTER_HTTP_URL: ""
-    ports:
-    - 8080:8080
-networks:
-  q1:
+      - 26000:26000
