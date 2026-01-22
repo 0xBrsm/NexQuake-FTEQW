@@ -4,7 +4,7 @@ ARG DEBIAN_VERSION=bookworm
 ARG EMSDK_IMAGE=emscripten/emsdk:latest
 
 ARG FTEQW_REPO=https://github.com/fte-team/fteqw.git
-ARG FTEQW_REF=master
+ARG FTEQW_REF=
 
 FROM debian:${DEBIAN_VERSION} AS server-builder
 ARG FTEQW_REPO
@@ -13,7 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git build-essential pkg-config zlib1g-dev \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-RUN git clone --depth 1 --branch "${FTEQW_REF}" "${FTEQW_REPO}" fteqw
+RUN if [ -n "${FTEQW_REF}" ]; then \
+      git clone --depth 1 --branch "${FTEQW_REF}" "${FTEQW_REPO}" fteqw; \
+    else \
+      git clone --depth 1 "${FTEQW_REPO}" fteqw; \
+    fi
 WORKDIR /build/fteqw/engine
 RUN make sv-rel
 
@@ -24,7 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git gzip make tar wget xz-utils \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-RUN git clone --depth 1 --branch "${FTEQW_REF}" "${FTEQW_REPO}" fteqw
+RUN if [ -n "${FTEQW_REF}" ]; then \
+      git clone --depth 1 --branch "${FTEQW_REF}" "${FTEQW_REPO}" fteqw; \
+    else \
+      git clone --depth 1 "${FTEQW_REPO}" fteqw; \
+    fi
 WORKDIR /build/fteqw/engine
 RUN make web-rel
 

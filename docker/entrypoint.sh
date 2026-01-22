@@ -21,7 +21,6 @@ write_client_config() {
   : "${WS_SCHEME:=auto}"
   : "${CONNECT:=}"
   : "${SERVER_LIST_URL:=}"      # preferred name
-  : "${MASTER_HTTP_URL:=}"      # backwards-compat
 
   js_quote() {
     # Minimal JS string escaping for env-provided values.
@@ -31,7 +30,7 @@ write_client_config() {
   }
 
   local server_list_url
-  server_list_url="${SERVER_LIST_URL:-$MASTER_HTTP_URL}"
+  server_list_url="${SERVER_LIST_URL}"
 
   cat > /opt/fteqw/web/config.js <<EOF
 // Generated at container start.

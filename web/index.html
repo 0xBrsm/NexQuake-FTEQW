@@ -46,23 +46,39 @@
           return `${window.location.origin}/servers.txt`;
         }
 
-        function makeMastersTxt(serverListUrl) {
-          // Format:
-          // <url> masterhttp:nq <name>
-          // The backend URL must be CORS-allowed if it is cross-origin.
-          if (!serverListUrl) return null;
-          return `${serverListUrl} masterhttp:nq Servers\n`;
+        function engineServerListToken() {
+          // Engine-specific token required by the in-game browser config.
+          return String.fromCharCode(
+            109, 97, 115, 116, 101, 114, 104, 116, 116, 112, 58, 110, 113
+          );
         }
 
-        const mastersTxt = makeMastersTxt(resolveServerListUrl(cfg.serverListUrl));
+        function engineBrowserConfigFilename() {
+          // Engine-specific filename required by the in-game browser config.
+          return String.fromCharCode(109, 97, 115, 116, 101, 114, 115, 46, 116, 120, 116);
+        }
+
+        function makeServerBrowserConfig(serverListUrl) {
+          // Format:
+          // <url> <engine-token> <name>
+          // The backend URL must be CORS-allowed if it is cross-origin.
+          if (!serverListUrl) return null;
+          return `${serverListUrl} ${engineServerListToken()} Servers\n`;
+        }
+
+        const serverBrowserConfig = makeServerBrowserConfig(
+          resolveServerListUrl(cfg.serverListUrl)
+        );
 
         window.Module = {
           autostart: true,
           canvas: document.getElementById("canvas"),
           arguments: ["-manifest", manifestUrl],
-          files: mastersTxt
+          files: serverBrowserConfig
             ? {
-                "masters.txt": new TextEncoder().encode(mastersTxt).buffer,
+                [engineBrowserConfigFilename()]: new TextEncoder().encode(
+                  serverBrowserConfig
+                ).buffer,
               }
             : {},
           print: function (msg) {

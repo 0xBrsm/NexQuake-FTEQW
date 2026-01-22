@@ -84,4 +84,3 @@ Client (applies to `all` and `client`):
 - `WS_SCHEME` (`auto`|`ws`|`wss`, default: `auto`)
 - `CONNECT` (optional full override, e.g. `ws://example.com:26000/nq`)
 - `SERVER_LIST_URL` (optional) URL that returns a plaintext server list for the in-game browser; default is same-origin `/servers.txt`
-- `MASTER_HTTP_URL` (optional) legacy name for `SERVER_LIST_URL`
