@@ -1,0 +1,6 @@
+.git
+.gitignore
+game
+**/node_modules
+**/.DS_Store
+

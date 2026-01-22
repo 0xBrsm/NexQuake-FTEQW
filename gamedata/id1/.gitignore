@@ -1,0 +1,5 @@
+# Keep the directory, but never commit game data.
+*
+!.gitignore
+!ftesrv.cfg
+

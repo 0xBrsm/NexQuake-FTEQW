@@ -1,0 +1,26 @@
+x-defaults: &defaults
+  image: fteqw-webquake
+  build:
+    context: .
+    network: host
+  environment:
+    GAMEDIR: id1
+    SERVER_PORT: "27500"
+  restart: unless-stopped
+  volumes:
+    - ./gamedata:/gamedata:ro  
+  networks:
+    - q1
+services:
+  server:
+    <<: *defaults
+    command: ["server"]
+    ports:
+    - 27500:27500
+  client:
+    <<: *defaults
+    command: ["client"]
+    ports:
+    - 8080:8080
+networks:
+  q1:
