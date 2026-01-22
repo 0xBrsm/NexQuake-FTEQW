@@ -150,9 +150,15 @@ case "$MODE" in
     }
     trap 'term; exit 0' INT TERM
 
-    wait "$nginx_pid"
+    # If either process exits, stop the other and exit (so compose can restart).
+    set +e
+    wait -n "$server_pid" "$nginx_pid"
+    rc=$?
+    set -e
     term
-    wait "$server_pid" || true
+    wait "$nginx_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+    exit "$rc"
     ;;
   server)
     : "${BASEDIR:=/gamedata}"
