@@ -1,10 +1,6 @@
 # Local game data (do not commit)
-gamedata/**/*.pak
-gamedata/**/*.pk3
-gamedata/**/*.pk4
-gamedata/**/*.pk7
-gamedata/**/dlcache/
-gamedata/**/downloads/
+gamedata/**
+!gamedata/.gitkeep
 
 # Build outputs / misc
 .DS_Store

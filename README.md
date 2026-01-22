@@ -42,7 +42,7 @@ docker run --rm -it \
 ## Notes on game data
 
 - Do not commit/share commercial game data (for Quake this includes `pak0.pak`/`pak1.pak`).
-- The repo includes `gamedata/id1/ftesrv.cfg` as a small server config example only.
+- The repo keeps `gamedata/` tracked but empty; mount your own data at runtime.
 - The web client fetches packages from the container at `/gamedata/...` when it loads (via the generated `/index.fmf` manifest).
 
 ## Build (multi-arch)
