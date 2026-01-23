@@ -16,9 +16,6 @@ x-defaults: &defaults
 services:
   fteqw:
     <<: *defaults
-    # Default mode is `all`, which runs both:
-    # - nginx (serves the WASM client)
-    # - fteqw-sv (NetQuake) on 127.0.0.1, reverse-proxied at /nq
-    command: ["all"]
+    # Runs both nginx (WASM client) + fteqw-sv (NetQuake), with live `/servers.txt`.
     ports:
       - 26000:26000

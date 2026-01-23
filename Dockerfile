@@ -44,7 +44,7 @@ RUN make web-rel
 
 FROM debian:${DEBIAN_VERSION}-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates nginx zlib1g \
+    bash ca-certificates netcat-openbsd nginx zlib1g \
   && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --shell /usr/sbin/nologin --uid 10001 fteqw
@@ -60,10 +60,14 @@ COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.js.gz /opt/fteqw/we
 COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.wasm.gz /opt/fteqw/web/ftewebgl.wasm.gz
 
 COPY web/index.html /opt/fteqw/web/index.html
+COPY web/servers.txt /opt/fteqw/web/servers.txt
+COPY web/servers.info /opt/fteqw/web/servers.info
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/entrypoint.sh /opt/fteqw/entrypoint.sh
+COPY docker/serverlist-poller.sh /opt/fteqw/serverlist-poller.sh
 
 RUN chmod +x /opt/fteqw/bin/fteqw-sv /opt/fteqw/entrypoint.sh \
+    /opt/fteqw/serverlist-poller.sh \
   && chown -R fteqw:fteqw /opt/fteqw
 
 USER fteqw
@@ -72,4 +76,4 @@ WORKDIR /opt/fteqw
 EXPOSE 26000/tcp
 
 ENTRYPOINT ["/opt/fteqw/entrypoint.sh"]
-CMD ["all"]
+CMD []

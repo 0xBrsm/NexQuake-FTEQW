@@ -1,0 +1,1 @@
+<!--#echo var="ws_scheme" -->://<!--#echo var="http_host" -->/nq/ <!--#include virtual="/servers.info" -->
