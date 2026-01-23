@@ -1,3 +1,106 @@
+diff --git a/engine/client/cl_main.c b/engine/client/cl_main.c
+index 74b1256..2a14891 100644
+--- a/engine/client/cl_main.c
++++ b/engine/client/cl_main.c
+@@ -1833,6 +1833,39 @@ CL_Connect_f
+ ================
+ */
+ void CL_Connect_c(int argn, const char *partial, struct xcommandargcompletioncb_s *ctx);
++#ifdef FTE_TARGET_WEB
++static cvar_t cl_web_connect_host = CVARFD("cl_web_connect_host", "", CVAR_NOTFROMSERVER, "If set, restricts connect/join to ws(s) URLs on this host.");
++static qboolean CL_WebConnectAllowed(const char *server)
++{
++	const char *host = cl_web_connect_host.string;
++	const char *p, *hend, *path;
++
++	if (!host || !*host)
++		return true;	//no restriction configured.
++
++	if (!strncmp(server, "ws://", 5))
++		p = server + 5;
++	else if (!strncmp(server, "wss://", 6))
++		p = server + 6;
++	else
++		return false;
++
++	hend = p;
++	while (*hend && *hend != '/' && *hend != '?' && *hend != '#')
++		hend++;
++
++	if ((size_t)(hend - p) != strlen(host) || Q_strncasecmp(p, host, hend - p))
++		return false;
++
++	path = hend;
++	if (*path != '/')
++		return false;
++	if (strncmp(path, "/nq", 3))
++		return false;
++
++	return true;
++}
++#endif
+ static void CL_Connect_f (void)
+ {
+ 	char	*server;
+@@ -1844,6 +1877,14 @@ static void CL_Connect_f (void)
+ 	}
+ 
+ 	server = Cmd_Argv (1);
++#ifdef FTE_TARGET_WEB
++	if (!CL_WebConnectAllowed(server))
++	{
++		Con_Printf(CON_ERROR"connect is restricted in this build. Use the server list.\n");
++		Cbuf_AddText("menu_slist\n", RESTRICT_LOCAL);
++		return;
++	}
++#endif
+ 	server = strcpy(alloca(strlen(server)+1), server);
+ 
+ /*#ifdef HAVE_SERVER
+@@ -1911,6 +1952,14 @@ static void CL_Join_f (void)
+ 	}
+ 
+ 	server = Cmd_Argv (1);
++#ifdef FTE_TARGET_WEB
++	if (!CL_WebConnectAllowed(server))
++	{
++		Con_Printf(CON_ERROR"join is restricted in this build. Use the server list.\n");
++		Cbuf_AddText("menu_slist\n", RESTRICT_LOCAL);
++		return;
++	}
++#endif
+ 	server = strcpy(alloca(strlen(server)+1), server);
+ 
+ 	CL_Disconnect_f ();
+diff --git a/engine/client/m_items.c b/engine/client/m_items.c
+index a29c0fc..6e0c694 100644
+--- a/engine/client/m_items.c
++++ b/engine/client/m_items.c
+@@ -2402,24 +2402,6 @@ static int M_Main_AddExtraOptions(emenu_t *mainm, int y)
+ 		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Quake Injector"), "qi\n");				y += 20;}
+ 	else if (PM_CanInstall("qi"))
+ 		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Get Quake Injector"), "pkg reset; pkg add qi; pkg apply\n");	y += 20;}
+-	if (Cmd_Exists("menu_download"))
+-	{
+-#ifdef WEBCLIENT
+-		MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("^bUpdates       "), "menu_download\n");	y += 20;
+-#else
+-		MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("^bPackages      "), "menu_download\n");	y += 20;
+-#endif
+-	}
+-	if (Cmd_Exists("menu_mods"))
+-		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Mods          "), "menu_mods\n");	y += 20;}
+-
+-	if (Cmd_Exists("sys_openfile"))
+-		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Open File     "), "sys_openfile\n");	y += 20;}
+-
+-#ifdef FTE_TARGET_WEB
+-	if (Cmd_Exists("xr_toggle"))
+-		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Toggle WebXR  "), "xr_toggle\n");	y += 20;}
+-#endif
+ 
+ 	return y;
+ }
 diff --git a/engine/client/m_master.c b/engine/client/m_master.c
 index 84fc722..0a69636 100644
 --- a/engine/client/m_master.c

@@ -70,10 +70,12 @@
           resolveServerListUrl(cfg.serverListUrl)
         );
 
+        const connectHost = window.location.host;
+
         window.Module = {
           autostart: true,
           canvas: document.getElementById("canvas"),
-          arguments: ["-manifest", manifestUrl],
+          arguments: ["-manifest", manifestUrl, "+set", "cl_web_connect_host", connectHost],
           files: serverBrowserConfig
             ? {
                 [engineBrowserConfigFilename()]: new TextEncoder().encode(
