@@ -164,7 +164,7 @@ index 84fc722..0a69636 100644
 +	if (sb_showfraglimit.value)	{x -= 3*8; SL_DrawColumnTitle(x, y, 3*8, mx, "fl", (sf==SLKEY_FRAGLIMIT), clr, &filldraw); x -= 8;}
 +	if (sb_showplayers.value)	{x -= 5*8; SL_DrawColumnTitle(x, y, 5*8, mx, "plyrs", (sf==SLKEY_NUMHUMANS), clr, &filldraw); x -= 8;}
 +	if (sb_showmap.value)		{x -= 8*8; SL_DrawColumnTitle(x, y, 8*8, mx, "map", (sf==SLKEY_MAP), clr, &filldraw); x -= 8;}
-+	if (sb_showgamedir.value)	{x -= 8*8; SL_DrawColumnTitle(x, y, 8*8, mx, "gamedir", (sf==SLKEY_GAMEDIR), clr, &filldraw); x -= 8;}
++	if (sb_showgamedir.value)	{x -= 8*8; SL_DrawColumnTitle(x, y, 8*8, mx, "modname", (sf==SLKEY_GAMEDIR), clr, &filldraw); x -= 8;}
 +	if (sb_showping.value)		{x -= 3*8; SL_DrawColumnTitle(x, y, 3*8, mx, "png", (sf==SLKEY_PING), clr, &filldraw); x -= 8;}
 +	if (sb_showaddress.value)	{x -= 21*8; SL_DrawColumnTitle(x, y, 21*8, mx, "address", (sf==SLKEY_ADDRESS), clr, &filldraw); x -= 8;}
 +	SL_DrawColumnTitle(left, y, x-left, mx, "hostname ", (sf==SLKEY_NAME), clr, &filldraw);
