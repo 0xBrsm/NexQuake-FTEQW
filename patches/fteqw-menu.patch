@@ -361,10 +361,25 @@ index 84fc722..0a69636 100644
  	descending = false;
  
 diff --git a/engine/client/m_multi.c b/engine/client/m_multi.c
-index 98d514e..cc65aa5 100644
+index 98d514e..8d267d5 100644
 --- a/engine/client/m_multi.c
 +++ b/engine/client/m_multi.c
-@@ -61,7 +61,7 @@ void M_Menu_MultiPlayer_f (void)
+@@ -37,7 +37,6 @@ void M_Menu_MultiPlayer_f (void)
+ 		MC_AddConsoleCommand	(menu, 64, 170, 56,	"Start network server",	"menu_newmulti\n");
+ #endif
+ 		MC_AddConsoleCommand	(menu, 64, 170, 64,	"Player setup",			"menu_setup\n");
+-		MC_AddConsoleCommand	(menu, 64, 170, 72,	"Demos",				"menu_demo\n");
+ 
+ 		menu->cursoritem = (menuoption_t*)MC_AddWhiteText(menu, 48, 0, 40, NULL, false);
+ 		return;
+@@ -54,14 +53,13 @@ void M_Menu_MultiPlayer_f (void)
+ 		MC_AddConsoleCommandHexen2BigFont	(menu, 80, mgt,	"Server List ",	"menu_slist\n");mgt+=20;
+ 		MC_AddConsoleCommandHexen2BigFont	(menu, 80, mgt,	"New Server  ",	"menu_newmulti\n");mgt+=20;
+ 		MC_AddConsoleCommandHexen2BigFont	(menu, 80, mgt,	"Player Setup",	"menu_setup\n");mgt+=20;
+-		MC_AddConsoleCommandHexen2BigFont	(menu, 80, mgt,	"Demos       ",	"menu_demo\n");mgt+=20;
+ 
+ 		menu->cursoritem = (menuoption_t *)MC_AddCursor(menu, &resel, 48, 64);
+ 		return;
  	}
  	else
  #endif
@@ -373,15 +388,17 @@ index 98d514e..cc65aa5 100644
  	{
  		MC_AddPicture(menu, 16, 4, 32, 144, "gfx/qplaque.lmp");
  		MC_AddCenterPicture(menu, 4, 24, "gfx/p_multi.lmp");
-@@ -72,7 +72,6 @@ void M_Menu_MultiPlayer_f (void)
+@@ -72,9 +70,7 @@ void M_Menu_MultiPlayer_f (void)
  #ifdef HAVE_PACKET
  		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Quick Connect"), "quickconnect qw\n");mgt+=20;
  #endif
 -		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("New Server  "),	"menu_newmulti\n");mgt+=20;
  		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Player Setup"),	"menu_setup\n");mgt+=20;
- 		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Demos       "),	"menu_demo\n");mgt+=20;
+-		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Demos       "),	"menu_demo\n");mgt+=20;
  
-@@ -98,9 +97,6 @@ void M_Menu_MultiPlayer_f (void)
+ 		menu->cursoritem = (menuoption_t*)MC_AddCursor(menu, &resel, 54, 32);
+ 		return;
+@@ -98,18 +94,10 @@ void M_Menu_MultiPlayer_f (void)
  		menu->selecteditem = (menuoption_t*)b;
  		b->common.height = 20;
  		b->common.width = width;
@@ -391,3 +408,58 @@ index 98d514e..cc65aa5 100644
  		b = MC_AddConsoleCommand(menu, 72, 320, 72, "", "menu_setup\n");
  		b->common.height = 20;
  		b->common.width = width;
+ 
+-		b = MC_AddConsoleCommand(menu, 72, 320, 92, "", "menu_demo\n");
+-		MC_AddWhiteText(menu, 72, 0, 92+20/2-6, localtext("^aDemos"), false);
+-		b->common.height = 20;
+-		b->common.width = width;
+-
+ #ifdef HAVE_PACKET
+ 		b = MC_AddConsoleCommand(menu, 72, 320, 112, "", "quickconnect qw\n");
+ 		MC_AddWhiteText(menu, 72, 0, 112+20/2-6, localtext("^aQuick Connect"), false);
+diff --git a/engine/client/m_single.c b/engine/client/m_single.c
+index d41a009..829c53c 100644
+--- a/engine/client/m_single.c
++++ b/engine/client/m_single.c
+@@ -423,7 +423,6 @@ void M_Menu_SinglePlayer_f (void)
+ 
+ #if MAX_SPLITS > 1
+ 				y+=8;
+-				MC_AddCvarCombo(menu, 72, 170, y, localtext("Splitscreen"), &cl_splitscreen, splitopts, splitvals);
+ #endif
+ 			}
+ 
+@@ -561,7 +560,6 @@ void M_Menu_SinglePlayer_f (void)
+ 				MC_AddConsoleCommandHexen2BigFont(menu, 80, y+=20,		"Load Game",	"menu_load\n");
+ #endif
+ 
+-				MC_AddCvarCombo(menu, 72, 170, y+=20, localtext("Splitscreen"), &cl_splitscreen, splitopts, splitvals);
+ 			}
+ 
+ 			menu->cursoritem = (menuoption_t *)MC_AddCursor(menu, menu->selecteditem?NULL:&resel, 56, menu->selecteditem?menu->selecteditem->common.posy:0);
+@@ -630,12 +628,6 @@ void M_Menu_SinglePlayer_f (void)
+ 		b->common.height = 20;
+ #endif
+ 
+-#if MAX_SPLITS > 1
+-		b = (menubutton_t*)MC_AddCvarCombo(menu, 72, 72+width/2, 92, "", &cl_splitscreen, splitopts, splitvals);
+-		MC_AddRedText(menu, 72, 0, 92, localtext("Splitscreen"), false);
+-		b->common.height = 20;
+-		b->common.width = width;
+-#endif
+ 
+ 		menu->cursoritem = (menuoption_t*)MC_AddCursor(menu, &resel, 54, 32);
+ 	}
+diff --git a/engine/client/net_master.c b/engine/client/net_master.c
+index 30f6c85..5728c5e 100644
+--- a/engine/client/net_master.c
++++ b/engine/client/net_master.c
+@@ -2714,6 +2714,8 @@ static void MasterInfo_ProcessHTTPInfo(serverinfo_t *srv, const char *info)
+ 		Q_strncpyz(srv->map, Info_ValueForKey(info, "mapname"), sizeof(srv->map));
+ 		srv->players = atoi(Info_ValueForKey(info, "clients"));
+ 		srv->maxplayers = atoi(Info_ValueForKey(info, "maxclients"));
++		srv->tl = atoi(Info_ValueForKey(info, "timelimit"));
++		srv->fl = atoi(Info_ValueForKey(info, "fraglimit"));
+ 
+ 		if (!MasterInfo_ReadProtocol(srv, info))
+ 			srv->special = (srv->special&~SS_PROTOCOLMASK)|SS_UNKNOWN;	//assume its an older fteqw server.
