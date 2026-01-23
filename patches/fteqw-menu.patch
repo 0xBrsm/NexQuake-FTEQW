@@ -102,20 +102,21 @@ index a29c0fc..6e0c694 100644
  	return y;
  }
 diff --git a/engine/client/m_master.c b/engine/client/m_master.c
-index 84fc722..8f1b5b7 100644
+index 84fc722..f0ea2cc 100644
 --- a/engine/client/m_master.c
 +++ b/engine/client/m_master.c
-@@ -32,6 +32,9 @@ static cvar_t	sb_alpha	= CVARF("sb_alpha",	"0.7",	CVAR_ARCHIVE);
+@@ -32,6 +32,10 @@ static cvar_t	sb_alpha	= CVARF("sb_alpha",	"0.7",	CVAR_ARCHIVE);
  vrect_t joinbutton, streambutton, specbutton;
  static float refreshedtime;
  static int isrefreshing;
 +#ifdef FTE_TARGET_WEB
 +static double slist_next_http_refresh;
++static double slist_http_sort_at;
 +#endif
  static enum
  {
  	SVPV_NO,
-@@ -109,18 +112,11 @@ typedef struct {
+@@ -109,18 +113,11 @@ typedef struct {
  	menupicture_t *mappic;
  } serverlist_t;
  
@@ -136,7 +137,7 @@ index 84fc722..8f1b5b7 100644
  	{
  		*filldraw = true;
  		R2D_ImageColours((sin(realtime*4.4)*0.25)+0.5, (sin(realtime*4.4)*0.25)+0.5, 0.08, 1.0);
-@@ -128,9 +124,6 @@ static void SL_DrawColumnTitle (int *x, int y, int xlen, int mx, char *str, qboo
+@@ -128,9 +125,6 @@ static void SL_DrawColumnTitle (int *x, int y, int xlen, int mx, char *str, qboo
  		R2D_ImageColours(1,1,1,1);
  	}
  	Draw_FunStringWidth(xmin, y, str, xlen, false, false);
@@ -146,7 +147,7 @@ index 84fc722..8f1b5b7 100644
  }
  
  static void SL_TitlesDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
-@@ -139,28 +132,30 @@ static void SL_TitlesDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -139,28 +133,30 @@ static void SL_TitlesDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
  	int mx = mousecursor_x;
  	qboolean filldraw = false;
  	qbyte clr;
@@ -188,7 +189,7 @@ index 84fc722..8f1b5b7 100644
  	int sortkey;
  	qboolean descending;
  	char sortchar = 0;
-@@ -170,7 +165,7 @@ static qboolean SL_TitlesKey (menucustom_t *ths, emenu_t *menu, int key, unsigne
+@@ -170,7 +166,7 @@ static qboolean SL_TitlesKey (menucustom_t *ths, emenu_t *menu, int key, unsigne
  
  	do {
  		x = ths->common.width/8;
@@ -197,7 +198,7 @@ index 84fc722..8f1b5b7 100644
  		if (sb_showtimelimit.value)	{x-=4;if (mx > x) {sortkey = SLKEY_TIMELIMIT;	sortchar='t';	break;}}
  		if (sb_showfraglimit.value)	{x-=4;if (mx > x) {sortkey = SLKEY_FRAGLIMIT;	sortchar='f';	break;}}
  		if (sb_showplayers.value)	{x-=6;if (mx > x) {sortkey = SLKEY_NUMHUMANS;	sortchar='p';	break;}}
-@@ -292,6 +287,8 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -292,6 +288,8 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
  	int thisone = ths->dint + info->scrollpos;
  	servertypes_t stype;
  	char adr[MAX_ADR_SIZE];
@@ -206,7 +207,7 @@ index 84fc722..8f1b5b7 100644
  
  	if (sb_filtertext.modifiedcount != info->filtermodcount)
  		CalcFilters(menu);
-@@ -299,7 +296,6 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -299,7 +297,6 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
  	si = Master_SortedServer(thisone);
  	if (si)
  	{
@@ -214,7 +215,7 @@ index 84fc722..8f1b5b7 100644
  		stype = flagstoservertype(si->special);
  		if (thisone == info->selectedpos)
  		{
-@@ -309,7 +305,7 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -309,7 +306,7 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
  				serverhighlight[(int)stype][2],
  				1.0));
  		}
@@ -223,7 +224,7 @@ index 84fc722..8f1b5b7 100644
  			R2D_ImageColours(SRGBA((sin(realtime*4.4)*0.25)+0.5, (sin(realtime*4.4)*0.25)+0.5, 0.08, sb_alpha.value));
  		else if (selectedserver.inuse && NET_CompareAdr(&si->adr, &selectedserver.adr) && !strcmp(si->brokerid, selectedserver.brokerid))
  			R2D_ImageColours(SRGBA(((sin(realtime*4.4)*0.25)+0.5) * 0.5, ((sin(realtime*4.4)*0.25)+0.5)*0.5, 0.08*0.5, sb_alpha.value));
-@@ -321,17 +317,17 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -321,17 +318,17 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
  				serverbackcolor[(int)stype * 2 + (thisone & 1)][2],
  				sb_alpha.value));
  		}
@@ -250,23 +251,28 @@ index 84fc722..8f1b5b7 100644
  	}
  }
  void MC_EditBox_Key(menuedit_t *edit, int key, unsigned int unicode);
-@@ -409,6 +405,15 @@ static void SL_PreDraw	(emenu_t *menu)
+@@ -409,6 +406,20 @@ static void SL_PreDraw	(emenu_t *menu)
  	serverlist_t *info = (serverlist_t*)(menu + 1);
  	Master_CheckPollSockets();
  
 +#ifdef FTE_TARGET_WEB
-+	if (!isrefreshing && slist_next_http_refresh < Sys_DoubleTime())
++	if (slist_next_http_refresh < Sys_DoubleTime())
 +	{
 +		MasterInfo_Refresh(false);
-+		isrefreshing = true;
 +		slist_next_http_refresh = Sys_DoubleTime() + 5;
++		slist_http_sort_at = Sys_DoubleTime() + 0.25;
++	}
++	if (slist_http_sort_at && slist_http_sort_at < Sys_DoubleTime())
++	{
++		slist_http_sort_at = 0;
++		Master_SortServers();
 +	}
 +#endif
 +
  	if (isrefreshing)
  	{
  		if (!CL_QueryServers())
-@@ -1045,6 +1050,9 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -1045,6 +1056,9 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
  
  	mpic_t *pic;
  
@@ -276,7 +282,7 @@ index 84fc722..8f1b5b7 100644
  	R2D_ImageColours(1,1,1,1);
  
  	pic = R2D_SafeCachePic("scrollbars/slidebg.tga");
-@@ -1067,13 +1075,13 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -1067,13 +1081,13 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
  	}
  	else
  	{
@@ -293,7 +299,7 @@ index 84fc722..8f1b5b7 100644
  		R2D_ImageColours(1,1,1,1);
  	}
  
-@@ -1112,10 +1120,14 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -1112,10 +1126,14 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
  }
  static qboolean SL_SliderKey (menucustom_t *ths, emenu_t *menu, int key, unsigned int unicode)
  {
@@ -309,7 +315,7 @@ index 84fc722..8f1b5b7 100644
  
  		my = mousecursor_y;
  		my -= ths->common.posy;
-@@ -1221,6 +1233,8 @@ void M_Menu_ServerList2_f(void)
+@@ -1221,6 +1239,8 @@ void M_Menu_ServerList2_f(void)
  	qboolean descending;
  	int sortkey;
  	char *sc;
@@ -318,7 +324,7 @@ index 84fc722..8f1b5b7 100644
  
  	if (!qrenderer)
  	{
-@@ -1240,18 +1254,32 @@ void M_Menu_ServerList2_f(void)
+@@ -1240,18 +1260,32 @@ void M_Menu_ServerList2_f(void)
  
  	info = (serverlist_t*)(menu + 1);
  
@@ -354,7 +360,7 @@ index 84fc722..8f1b5b7 100644
  	cust->draw = SL_SliderDraw;
  	cust->key = SL_SliderKey;
  	cust->common.height = info->visibleslots;
-@@ -1260,19 +1288,19 @@ void M_Menu_ServerList2_f(void)
+@@ -1260,19 +1294,19 @@ void M_Menu_ServerList2_f(void)
  	info->visibleslots = (info->visibleslots-8)/8;
  	for (i = 0, y = info->servers_top; i <= info->visibleslots; y +=8, i++)
  	{
@@ -377,7 +383,7 @@ index 84fc722..8f1b5b7 100644
  	{
  		for (y = vid.height-64+8; y < vid.height; y += 8, i++)
  		{
-@@ -1289,7 +1317,7 @@ void M_Menu_ServerList2_f(void)
+@@ -1289,7 +1323,7 @@ void M_Menu_ServerList2_f(void)
  	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*1, localtext("Ping     "), &sb_showping, 1);
  	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*2, localtext("Address  "), &sb_showaddress, 1);
  	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*3, localtext("Map      "), &sb_showmap, 1);
@@ -386,7 +392,7 @@ index 84fc722..8f1b5b7 100644
  	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*5, localtext("Players  "), &sb_showplayers, 1);
  	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*6, localtext("Fraglimit"), &sb_showfraglimit, 1);
  	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*7, localtext("Timelimit"), &sb_showtimelimit, 1);
-@@ -1317,7 +1345,7 @@ void M_Menu_ServerList2_f(void)
+@@ -1317,7 +1351,7 @@ void M_Menu_ServerList2_f(void)
  	info->filter[SLFILTER_HIDEEMPTY] = !!sb_hideempty.value;
  	info->filter[SLFILTER_HIDEFULL] = !!sb_hidefull.value;
  
@@ -395,14 +401,14 @@ index 84fc722..8f1b5b7 100644
  
  	descending = false;
  
-@@ -1343,11 +1371,17 @@ void M_Menu_ServerList2_f(void)
+@@ -1343,11 +1377,17 @@ void M_Menu_ServerList2_f(void)
  	}
  	Master_SetSortField(sortkey, descending);
  
 +#ifdef FTE_TARGET_WEB
-+	slist_next_http_refresh = 0;
++	slist_next_http_refresh = Sys_DoubleTime() + 5;
++	slist_http_sort_at = Sys_DoubleTime() + 0.25;
 +	MasterInfo_Refresh(false);
-+	isrefreshing = true;
 +#else
  	if (!Master_TotalCount())
  	{

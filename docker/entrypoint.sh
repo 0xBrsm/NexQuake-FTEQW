@@ -26,6 +26,7 @@ window.WEBQUAKE = {
   wsScheme: $(js_quote "${WS_SCHEME:-auto}"),
   connectOverride: $(js_quote "$CONNECT"),
   serverListUrl: $(js_quote "$server_list_url"),
+  gamedir: $(js_quote "${GAMEDIR:-id1}"),
   manifestUrl: "/index.fmf"
 };
 EOF

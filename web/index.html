@@ -71,11 +71,20 @@
         );
 
         const connectHost = window.location.host;
+        const gamedir = cfg.gamedir || "id1";
 
         window.Module = {
           autostart: true,
           canvas: document.getElementById("canvas"),
-          arguments: ["-manifest", manifestUrl, "+set", "cl_web_connect_host", connectHost],
+          arguments: [
+            "-manifest",
+            manifestUrl,
+            "-game",
+            gamedir,
+            "+set",
+            "cl_web_connect_host",
+            connectHost,
+          ],
           files: serverBrowserConfig
             ? {
                 [engineBrowserConfigFilename()]: new TextEncoder().encode(
