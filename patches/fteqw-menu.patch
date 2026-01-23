@@ -463,3 +463,17 @@ index 30f6c85..5728c5e 100644
  
  		if (!MasterInfo_ReadProtocol(srv, info))
  			srv->special = (srv->special&~SS_PROTOCOLMASK)|SS_UNKNOWN;	//assume its an older fteqw server.
+
+diff --git a/engine/server/sv_main.c b/engine/server/sv_main.c
+--- a/engine/server/sv_main.c
++++ b/engine/server/sv_main.c
+@@ -1405,6 +1405,7 @@ static void SVC_GetInfo (const char *challenge, int fullstatus)
+ 	resp += strlen(resp);
+ 	*resp++ = '\n';
+ 
+ 	SV_GeneratePublicServerinfo(resp, response+sizeof(response));
++	resp += strlen(resp) + 1;
+ 
+ 	if (fullstatus)
+ 	{
+ 		client_t *cl;

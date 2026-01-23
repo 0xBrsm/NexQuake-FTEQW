@@ -8,6 +8,8 @@ set -euo pipefail
 : "${SERVERLIST_INTERVAL:=5}"
 : "${SERVERLIST_HOSTNAME:=NetQuake}"
 : "${SERVERLIST_MAXCLIENTS_DEFAULT:=16}"
+: "${GAMEDIR:=id1}"
+: "${SERVERLIST_MODNAME:=$GAMEDIR}"
 
 out_dir="/opt/fteqw/web"
 out_file="${out_dir}/servers.info"
@@ -29,17 +31,21 @@ get_info_value() {
 normalize_infostring() {
 	local info="$1"
 
-	# Ensure we always have a hostname (prefer runtime override, otherwise whatever server returned).
-	if [ -n "${SERVERLIST_HOSTNAME}" ]; then
-		# Remove existing hostname if present, then append our hostname.
-		info="$(awk -F'\\' -v host="$SERVERLIST_HOSTNAME" 'BEGIN{out="";seen=0}
+	# Ensure we always have consistent hostname/modname.
+	if [ -n "${SERVERLIST_HOSTNAME}" ] || [ -n "${SERVERLIST_MODNAME}" ]; then
+		# Drop existing hostname/modname (if present), then append our values.
+		info="$(awk -F'\\' -v host="$SERVERLIST_HOSTNAME" -v mod="$SERVERLIST_MODNAME" '
+			BEGIN{out=""}
 			{
 				for(i=2;i<NF;i+=2){
 					k=$i; v=$(i+1);
-					if(k=="hostname"){seen=1; next}
-					out=out "\\" k "\\" v
+					if (k != "hostname" && k != "modname")
+						out = out "\\" k "\\" v
 				}
-				out=out "\\hostname\\" host
+				if (mod != "")
+					out = out "\\modname\\" mod
+				if (host != "")
+					out = out "\\hostname\\" host
 				print out
 			}' <<<"$info")"
 	fi
@@ -71,7 +77,7 @@ mkdir -p "$out_dir"
 while true; do
 	# Quake3/dpmaster-style query supported by FTEQW: response is `infoResponse\n\\key\\val...`
 	resp="$(
-		printf '\xFF\xFF\xFF\xFFgetinfo poll\n' | nc -u -n -w 1 127.0.0.1 "$NQ_PORT" 2>/dev/null || true
+		printf '\xFF\xFF\xFF\xFFgetinfo poll\n' | nc -u -n -w 1 127.0.0.1 "$NQ_PORT" 2>/dev/null | tr -d '\000' || true
 	)"
 
 	infostring="$(
@@ -86,8 +92,10 @@ while true; do
 			printf '%s\n' "$infostring"
 		} >"$tmp_file"
 		mv -f "$tmp_file" "$out_file"
+		sleep "$SERVERLIST_INTERVAL"
+		continue
 	fi
 
-	sleep "$SERVERLIST_INTERVAL"
+	# If the server isn't ready yet, retry quickly so the UI doesn't sit at zeros for long.
+	sleep 1
 done
-
