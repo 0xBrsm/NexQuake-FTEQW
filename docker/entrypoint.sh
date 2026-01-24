@@ -137,7 +137,11 @@ server_pid=$!
 /opt/fteqw/serverlist-poller.sh &
 poller_pid=$!
 
-nginx -g 'daemon off;' &
+# nginx config contains a default proxy_pass port; rewrite it to match NQ_PORT.
+sed -e "s|proxy_pass http://127\\.0\\.0\\.1:27500;|proxy_pass http://127.0.0.1:${NQ_PORT};|g" \
+  /etc/nginx/nginx.conf > /tmp/nginx.conf
+
+nginx -c /tmp/nginx.conf -g 'daemon off;' &
 nginx_pid=$!
 
 term() {

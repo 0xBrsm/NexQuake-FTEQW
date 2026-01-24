@@ -6,39 +6,37 @@ ARG EMSDK_IMAGE=emscripten/emsdk:latest
 ARG FTEQW_REPO=https://github.com/fte-team/fteqw.git
 ARG FTEQW_REF=
 
-FROM debian:${DEBIAN_VERSION} AS server-builder
+FROM debian:${DEBIAN_VERSION} AS fteqw-source
 ARG FTEQW_REPO
 ARG FTEQW_REF
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN if [ -n "${FTEQW_REF}" ]; then \
+      git clone --depth 1 --branch "${FTEQW_REF}" "${FTEQW_REPO}" fteqw; \
+    else \
+      git clone --depth 1 "${FTEQW_REPO}" fteqw; \
+    fi
+COPY patches/ /tmp/patches/
+WORKDIR /build/fteqw
+RUN if ls /tmp/patches/*.patch >/dev/null 2>&1; then git apply /tmp/patches/*.patch; fi
+
+FROM debian:${DEBIAN_VERSION} AS server-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git build-essential pkg-config zlib1g-dev \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-RUN if [ -n "${FTEQW_REF}" ]; then \
-      git clone --depth 1 --branch "${FTEQW_REF}" "${FTEQW_REPO}" fteqw; \
-    else \
-      git clone --depth 1 "${FTEQW_REPO}" fteqw; \
-    fi
-COPY patches/ /tmp/patches/
-WORKDIR /build/fteqw
-RUN if ls /tmp/patches/*.patch >/dev/null 2>&1; then git apply /tmp/patches/*.patch; fi
+COPY --from=fteqw-source /build/fteqw /build/fteqw
 WORKDIR /build/fteqw/engine
 RUN make sv-rel
 
 FROM ${EMSDK_IMAGE} AS web-builder
-ARG FTEQW_REPO
-ARG FTEQW_REF
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git gzip make tar wget xz-utils \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-RUN if [ -n "${FTEQW_REF}" ]; then \
-      git clone --depth 1 --branch "${FTEQW_REF}" "${FTEQW_REPO}" fteqw; \
-    else \
-      git clone --depth 1 "${FTEQW_REPO}" fteqw; \
-    fi
-COPY patches/ /tmp/patches/
-WORKDIR /build/fteqw
-RUN if ls /tmp/patches/*.patch >/dev/null 2>&1; then git apply /tmp/patches/*.patch; fi
+COPY --from=fteqw-source /build/fteqw /build/fteqw
 WORKDIR /build/fteqw/engine
 RUN make web-rel
 
