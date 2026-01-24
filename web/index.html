@@ -38,28 +38,60 @@
     <script src="/config.js"></script>
     <script>
       (function () {
-        function buildConnectUrl(cfg) {
-          if (cfg && cfg.connectOverride) return cfg.connectOverride;
-          const host = (cfg && cfg.serverHost) || window.location.hostname;
-          const port = (cfg && cfg.serverPort) || "27500";
-          const schemePref = (cfg && cfg.wsScheme) || "auto";
-          const scheme =
-            schemePref === "ws" || schemePref === "wss"
-              ? schemePref
-              : window.location.protocol === "https:"
-                ? "wss"
-                : "ws";
-          return `${scheme}://${host}:${port}/`;
+        const cfg = window.WEBQUAKE || {};
+        const manifestUrl = cfg.manifestUrl || "/index.fmf";
+
+        function resolveServerListUrl(serverListUrl) {
+          if (serverListUrl) return serverListUrl;
+          return `${window.location.origin}/servers.txt`;
         }
 
-        const cfg = window.FTEQW_WEBQUAKE || {};
-        const connectUrl = buildConnectUrl(cfg);
-        const manifestUrl = cfg.manifestUrl || "/index.fmf";
+        function engineServerListToken() {
+          // Engine-specific token required by the in-game browser config.
+          return String.fromCharCode(
+            109, 97, 115, 116, 101, 114, 104, 116, 116, 112, 58, 110, 113
+          );
+        }
+
+        function engineBrowserConfigFilename() {
+          // Engine-specific filename required by the in-game browser config.
+          return String.fromCharCode(109, 97, 115, 116, 101, 114, 115, 46, 116, 120, 116);
+        }
+
+        function makeServerBrowserConfig(serverListUrl) {
+          // Format:
+          // <url> <engine-token> <name>
+          // The backend URL must be CORS-allowed if it is cross-origin.
+          if (!serverListUrl) return null;
+          return `${serverListUrl} ${engineServerListToken()} Servers\n`;
+        }
+
+        const serverBrowserConfig = makeServerBrowserConfig(
+          resolveServerListUrl(cfg.serverListUrl)
+        );
+
+        const connectHost = window.location.host;
+        const gamedir = cfg.gamedir || "id1";
 
         window.Module = {
           autostart: true,
           canvas: document.getElementById("canvas"),
-          arguments: ["+connect", connectUrl, "-manifest", manifestUrl],
+          arguments: [
+            "-manifest",
+            manifestUrl,
+            "-game",
+            gamedir,
+            "+set",
+            "cl_web_connect_host",
+            connectHost,
+          ],
+          files: serverBrowserConfig
+            ? {
+                [engineBrowserConfigFilename()]: new TextEncoder().encode(
+                  serverBrowserConfig
+                ).buffer,
+              }
+            : {},
           print: function (msg) {
             console.log(msg);
           },
@@ -84,4 +116,3 @@
     </script>
   </body>
 </html>
-

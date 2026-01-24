@@ -1,25 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE="${MODE:-}"
-if [ $# -ge 1 ]; then
-  case "$1" in
-    server|client)
-      MODE="$1"
-      shift
-      ;;
-  esac
-fi
-
-if [ -z "$MODE" ]; then
-  MODE="client"
-fi
-
 write_client_config() {
-  : "${SERVER_HOST:=}"
-  : "${SERVER_PORT:=27500}"
+  : "${SERVER_HOST:=}"          # optional explicit host override for UI/legacy uses
+  : "${SERVER_PORT:=26000}"     # public port (nginx) seen by browsers
   : "${WS_SCHEME:=auto}"
   : "${CONNECT:=}"
+  : "${SERVER_LIST_URL:=}"      # preferred name
 
   js_quote() {
     # Minimal JS string escaping for env-provided values.
@@ -28,13 +15,18 @@ write_client_config() {
     printf '"%s"' "$s"
   }
 
+  local server_list_url
+  server_list_url="${SERVER_LIST_URL}"
+
   cat > /opt/fteqw/web/config.js <<EOF
 // Generated at container start.
 window.WEBQUAKE = {
   serverHost: $(js_quote "$SERVER_HOST"),
-  serverPort: $(js_quote "${SERVER_PORT:-27500}"),
+  serverPort: $(js_quote "${SERVER_PORT:-26000}"),
   wsScheme: $(js_quote "${WS_SCHEME:-auto}"),
   connectOverride: $(js_quote "$CONNECT"),
+  serverListUrl: $(js_quote "$server_list_url"),
+  gamedir: $(js_quote "${GAMEDIR:-id1}"),
   manifestUrl: "/index.fmf"
 };
 EOF
@@ -115,29 +107,55 @@ write_manifest() {
   cp "$out" /opt/fteqw/web/index.html.fmf
 }
 
-case "$MODE" in
-  server)
-    : "${BASEDIR:=/gamedata}"
-    : "${GAMEDIR:=id1}"
-    : "${SERVER_PORT:=27500}"
-    : "${SERVER_PUBLIC:=0}"
-    : "${SERVER_ARGS:=}"
+: "${BASEDIR:=/gamedata}"
+: "${GAMEDIR:=id1}"
+: "${NQ_PORT:=27500}"        # internal server port (not published)
+: "${SERVER_PUBLIC:=0}"
+: "${SERVER_ARGS:=}"
 
-    exec /opt/fteqw/bin/fteqw-sv \
-      -basedir "$BASEDIR" \
-      -game "$GAMEDIR" \
-      +set sv_port_tcp "$SERVER_PORT" \
-      +set sv_public "$SERVER_PUBLIC" \     
-      $SERVER_ARGS \
-      "$@"
-    ;;
-  client)
-    write_client_config
-    write_manifest
-    exec nginx -g 'daemon off;'
-    ;;
-  *)
-    echo "Usage: $0 [server|client] [args...]" >&2
-    exit 2
-    ;;
-esac
+write_client_config
+write_manifest
+
+# Seed a default infostring so the in-game browser can always render something,
+# even before the serverlist poller has produced a live response.
+if [ ! -s /opt/fteqw/web/servers.info ]; then
+  printf '%s\n' "\\hostname\\NetQuake\\modname\\${GAMEDIR}\\mapname\\dm4\\clients\\0\\maxclients\\0\\timelimit\\0\\fraglimit\\0\\" > /opt/fteqw/web/servers.info
+fi
+
+/opt/fteqw/bin/fteqw-sv \
+  -basedir "$BASEDIR" \
+  -game "$GAMEDIR" \
+  +set sv_serverip 127.0.0.1 \
+  +set net_enable_websockets 1 \
+  +set sv_port "$NQ_PORT" \
+  +set sv_port_tcp "$NQ_PORT" \
+  +set sv_public "$SERVER_PUBLIC" \
+  $SERVER_ARGS \
+  "$@" &
+server_pid=$!
+
+/opt/fteqw/serverlist-poller.sh &
+poller_pid=$!
+
+# nginx config contains a default proxy_pass port; rewrite it to match NQ_PORT.
+sed -e "s|proxy_pass http://127\\.0\\.0\\.1:27500;|proxy_pass http://127.0.0.1:${NQ_PORT};|g" \
+  /etc/nginx/nginx.conf > /tmp/nginx.conf
+
+nginx -c /tmp/nginx.conf -g 'daemon off;' &
+nginx_pid=$!
+
+term() {
+  kill "$nginx_pid" "$poller_pid" "$server_pid" 2>/dev/null || true
+}
+trap 'term; exit 0' INT TERM
+
+# If any process exits, stop the others and exit (so compose can restart).
+set +e
+wait -n "$server_pid" "$poller_pid" "$nginx_pid"
+rc=$?
+set -e
+term
+wait "$nginx_pid" 2>/dev/null || true
+wait "$poller_pid" 2>/dev/null || true
+wait "$server_pid" 2>/dev/null || true
+exit "$rc"

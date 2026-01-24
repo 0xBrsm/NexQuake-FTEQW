@@ -1,0 +1,543 @@
+diff --git a/engine/client/cl_main.c b/engine/client/cl_main.c
+index 74b1256..2a14891 100644
+--- a/engine/client/cl_main.c
++++ b/engine/client/cl_main.c
+@@ -1833,6 +1833,39 @@ CL_Connect_f
+ ================
+ */
+ void CL_Connect_c(int argn, const char *partial, struct xcommandargcompletioncb_s *ctx);
++#ifdef FTE_TARGET_WEB
++static cvar_t cl_web_connect_host = CVARFD("cl_web_connect_host", "", CVAR_NOTFROMSERVER, "If set, restricts connect/join to ws(s) URLs on this host.");
++static qboolean CL_WebConnectAllowed(const char *server)
++{
++	const char *host = cl_web_connect_host.string;
++	const char *p, *hend, *path;
++
++	if (!host || !*host)
++		return true;	//no restriction configured.
++
++	if (!strncmp(server, "ws://", 5))
++		p = server + 5;
++	else if (!strncmp(server, "wss://", 6))
++		p = server + 6;
++	else
++		return false;
++
++	hend = p;
++	while (*hend && *hend != '/' && *hend != '?' && *hend != '#')
++		hend++;
++
++	if ((size_t)(hend - p) != strlen(host) || Q_strncasecmp(p, host, hend - p))
++		return false;
++
++	path = hend;
++	if (*path != '/')
++		return false;
++	if (strncmp(path, "/nq", 3))
++		return false;
++
++	return true;
++}
++#endif
+ static void CL_Connect_f (void)
+ {
+ 	char	*server;
+@@ -1844,6 +1877,14 @@ static void CL_Connect_f (void)
+ 	}
+ 
+ 	server = Cmd_Argv (1);
++#ifdef FTE_TARGET_WEB
++	if (!CL_WebConnectAllowed(server))
++	{
++		Con_Printf(CON_ERROR"connect is restricted in this build. Use the server list.\n");
++		Cbuf_AddText("menu_slist\n", RESTRICT_LOCAL);
++		return;
++	}
++#endif
+ 	server = strcpy(alloca(strlen(server)+1), server);
+ 
+ /*#ifdef HAVE_SERVER
+@@ -1911,6 +1952,14 @@ static void CL_Join_f (void)
+ 	}
+ 
+ 	server = Cmd_Argv (1);
++#ifdef FTE_TARGET_WEB
++	if (!CL_WebConnectAllowed(server))
++	{
++		Con_Printf(CON_ERROR"join is restricted in this build. Use the server list.\n");
++		Cbuf_AddText("menu_slist\n", RESTRICT_LOCAL);
++		return;
++	}
++#endif
+ 	server = strcpy(alloca(strlen(server)+1), server);
+ 
+ 	CL_Disconnect_f ();
+diff --git a/engine/client/m_items.c b/engine/client/m_items.c
+index a29c0fc..6e0c694 100644
+--- a/engine/client/m_items.c
++++ b/engine/client/m_items.c
+@@ -2402,24 +2402,6 @@ static int M_Main_AddExtraOptions(emenu_t *mainm, int y)
+ 		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Quake Injector"), "qi\n");				y += 20;}
+ 	else if (PM_CanInstall("qi"))
+ 		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Get Quake Injector"), "pkg reset; pkg add qi; pkg apply\n");	y += 20;}
+-	if (Cmd_Exists("menu_download"))
+-	{
+-#ifdef WEBCLIENT
+-		MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("^bUpdates       "), "menu_download\n");	y += 20;
+-#else
+-		MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("^bPackages      "), "menu_download\n");	y += 20;
+-#endif
+-	}
+-	if (Cmd_Exists("menu_mods"))
+-		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Mods          "), "menu_mods\n");	y += 20;}
+-
+-	if (Cmd_Exists("sys_openfile"))
+-		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Open File     "), "sys_openfile\n");	y += 20;}
+-
+-#ifdef FTE_TARGET_WEB
+-	if (Cmd_Exists("xr_toggle"))
+-		{MC_AddConsoleCommandQBigFont(mainm, 72, y,	localtext("Toggle WebXR  "), "xr_toggle\n");	y += 20;}
+-#endif
+ 
+ 	return y;
+ }
+diff --git a/engine/client/m_master.c b/engine/client/m_master.c
+index 84fc722..e02af3d 100644
+--- a/engine/client/m_master.c
++++ b/engine/client/m_master.c
+@@ -32,6 +32,9 @@ static cvar_t	sb_alpha	= CVARF("sb_alpha",	"0.7",	CVAR_ARCHIVE);
+ vrect_t joinbutton, streambutton, specbutton;
+ static float refreshedtime;
+ static int isrefreshing;
++#ifdef FTE_TARGET_WEB
++static double slist_next_http_refresh;
++#endif
+ static enum
+ {
+ 	SVPV_NO,
+@@ -109,18 +112,11 @@ typedef struct {
+ 	menupicture_t *mappic;
+ } serverlist_t;
+ 
+-static void SL_DrawColumnTitle (int *x, int y, int xlen, int mx, char *str, qboolean recolor, qbyte clr, qboolean *filldraw)
++static void SL_DrawColumnTitle (int xmin, int y, int xlen, int mx, char *str, qboolean recolor, qbyte clr, qboolean *filldraw)
+ {
+-	int xmin;
+-
+-	if (x == NULL)
+-		xmin = 0;
+-	else
+-		xmin = (*x - xlen);
+-
+ 	if (recolor)
+ 		str = va("^&%c-%s", clr, str);
+-	if (mx >= xmin && !(*filldraw))
++	if (mx >= xmin && mx < xmin + xlen && !(*filldraw))
+ 	{
+ 		*filldraw = true;
+ 		R2D_ImageColours((sin(realtime*4.4)*0.25)+0.5, (sin(realtime*4.4)*0.25)+0.5, 0.08, 1.0);
+@@ -128,9 +124,6 @@ static void SL_DrawColumnTitle (int *x, int y, int xlen, int mx, char *str, qboo
+ 		R2D_ImageColours(1,1,1,1);
+ 	}
+ 	Draw_FunStringWidth(xmin, y, str, xlen, false, false);
+-
+-	if (x != NULL)
+-		*x -= xlen + 8;
+ }
+ 
+ static void SL_TitlesDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+@@ -139,28 +132,30 @@ static void SL_TitlesDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 	int mx = mousecursor_x;
+ 	qboolean filldraw = false;
+ 	qbyte clr;
++	int left = x;
++	int right = x + ths->common.width;
+ 
+ 	if (Master_GetSortDescending())
+ 		clr = 'D';
+ 	else
+ 		clr = 'B';
+-	x = ths->common.width;
+-	if ((mx > x || mousecursor_y < y || mousecursor_y >= y+8) && !serverpreview)
++	if ((mx > right || mx < left || mousecursor_y < y || mousecursor_y >= y+8) && !serverpreview)
+ 		filldraw = true;
+-	if (sb_showtimelimit.value)	{SL_DrawColumnTitle(&x, y, 3*8, mx, "tl", (sf==SLKEY_TIMELIMIT), clr, &filldraw);}
+-	if (sb_showfraglimit.value)	{SL_DrawColumnTitle(&x, y, 3*8, mx, "fl", (sf==SLKEY_FRAGLIMIT), clr, &filldraw);}
+-	if (sb_showplayers.value)	{SL_DrawColumnTitle(&x, y, 5*8, mx, "plyrs", (sf==SLKEY_NUMHUMANS), clr, &filldraw);}
+-	if (sb_showmap.value)		{SL_DrawColumnTitle(&x, y, 8*8, mx, "map", (sf==SLKEY_MAP), clr, &filldraw);}
+-	if (sb_showgamedir.value)	{SL_DrawColumnTitle(&x, y, 8*8, mx, "gamedir", (sf==SLKEY_GAMEDIR), clr, &filldraw);}
+-	if (sb_showping.value)		{SL_DrawColumnTitle(&x, y, 3*8, mx, "png", (sf==SLKEY_PING), clr, &filldraw);}
+-	if (sb_showaddress.value)	{SL_DrawColumnTitle(&x, y, 21*8, mx, "address", (sf==SLKEY_ADDRESS), clr, &filldraw);}
+-	SL_DrawColumnTitle(NULL, y, x, mx, "hostname ", (sf==SLKEY_NAME), clr, &filldraw);
++	x = right;
++	if (sb_showtimelimit.value)	{x -= 3*8; SL_DrawColumnTitle(x, y, 3*8, mx, "tl", (sf==SLKEY_TIMELIMIT), clr, &filldraw); x -= 8;}
++	if (sb_showfraglimit.value)	{x -= 3*8; SL_DrawColumnTitle(x, y, 3*8, mx, "fl", (sf==SLKEY_FRAGLIMIT), clr, &filldraw); x -= 8;}
++	if (sb_showplayers.value)	{x -= 5*8; SL_DrawColumnTitle(x, y, 5*8, mx, "plyrs", (sf==SLKEY_NUMHUMANS), clr, &filldraw); x -= 8;}
++	if (sb_showmap.value)		{x -= 8*8; SL_DrawColumnTitle(x, y, 8*8, mx, "map", (sf==SLKEY_MAP), clr, &filldraw); x -= 8;}
++	if (sb_showgamedir.value)	{x -= 8*8; SL_DrawColumnTitle(x, y, 8*8, mx, "modname", (sf==SLKEY_GAMEDIR), clr, &filldraw); x -= 8;}
++	if (sb_showping.value)		{x -= 3*8; SL_DrawColumnTitle(x, y, 3*8, mx, "png", (sf==SLKEY_PING), clr, &filldraw); x -= 8;}
++	if (sb_showaddress.value)	{x -= 21*8; SL_DrawColumnTitle(x, y, 21*8, mx, "address", (sf==SLKEY_ADDRESS), clr, &filldraw); x -= 8;}
++	SL_DrawColumnTitle(left, y, x-left, mx, "hostname ", (sf==SLKEY_NAME), clr, &filldraw);
+ }
+ 
+ static qboolean SL_TitlesKey (menucustom_t *ths, emenu_t *menu, int key, unsigned int unicode)
+ {
+ 	int x;
+-	int mx = mousecursor_x/8;
++	int mx = (mousecursor_x - ths->common.posx)/8;
+ 	int sortkey;
+ 	qboolean descending;
+ 	char sortchar = 0;
+@@ -170,7 +165,7 @@ static qboolean SL_TitlesKey (menucustom_t *ths, emenu_t *menu, int key, unsigne
+ 
+ 	do {
+ 		x = ths->common.width/8;
+-		if (mx > x) return false;	//out of bounds
++		if (mx < 0 || mx > x) return false;	//out of bounds
+ 		if (sb_showtimelimit.value)	{x-=4;if (mx > x) {sortkey = SLKEY_TIMELIMIT;	sortchar='t';	break;}}
+ 		if (sb_showfraglimit.value)	{x-=4;if (mx > x) {sortkey = SLKEY_FRAGLIMIT;	sortchar='f';	break;}}
+ 		if (sb_showplayers.value)	{x-=6;if (mx > x) {sortkey = SLKEY_NUMHUMANS;	sortchar='p';	break;}}
+@@ -292,6 +287,8 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 	int thisone = ths->dint + info->scrollpos;
+ 	servertypes_t stype;
+ 	char adr[MAX_ADR_SIZE];
++	int left = x;
++	int right = x + ths->common.width;
+ 
+ 	if (sb_filtertext.modifiedcount != info->filtermodcount)
+ 		CalcFilters(menu);
+@@ -299,7 +296,6 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 	si = Master_SortedServer(thisone);
+ 	if (si)
+ 	{
+-		x = ths->common.width;
+ 		stype = flagstoservertype(si->special);
+ 		if (thisone == info->selectedpos)
+ 		{
+@@ -309,7 +305,7 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 				serverhighlight[(int)stype][2],
+ 				1.0));
+ 		}
+-		else if (thisone == info->scrollpos + (int)(mousecursor_y-info->servers_top)/8 && mousecursor_x < x && !serverpreview)
++		else if (thisone == info->scrollpos + (int)(mousecursor_y-info->servers_top)/8 && mousecursor_x >= left && mousecursor_x < right && !serverpreview)
+ 			R2D_ImageColours(SRGBA((sin(realtime*4.4)*0.25)+0.5, (sin(realtime*4.4)*0.25)+0.5, 0.08, sb_alpha.value));
+ 		else if (selectedserver.inuse && NET_CompareAdr(&si->adr, &selectedserver.adr) && !strcmp(si->brokerid, selectedserver.brokerid))
+ 			R2D_ImageColours(SRGBA(((sin(realtime*4.4)*0.25)+0.5) * 0.5, ((sin(realtime*4.4)*0.25)+0.5)*0.5, 0.08*0.5, sb_alpha.value));
+@@ -321,17 +317,17 @@ static void SL_ServerDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 				serverbackcolor[(int)stype * 2 + (thisone & 1)][2],
+ 				sb_alpha.value));
+ 		}
+-		R2D_FillBlock(0, y, ths->common.width, 8);
++		R2D_FillBlock(left, y, ths->common.width, 8);
+ 
+ 		R2D_ImageColours(1,1,1,1);
+-		if (sb_showtimelimit.value)	{Draw_FunStringWidth((x-3*8), y, va("%i", si->tl), 3*8, false, false); x-=4*8;}
+-		if (sb_showfraglimit.value)	{Draw_FunStringWidth((x-3*8), y, va("%i", si->fl), 3*8, false, false); x-=4*8;}
+-		if (sb_showplayers.value)	{Draw_FunStringWidth((x-5*8), y, va("%2i/%2i", si->numhumans, si->maxplayers), 5*8, false, false); x-=6*8;}
+-		if (sb_showmap.value)		{Draw_FunStringWidth((x-8*8), y, si->map, 8*8, false, false); x-=9*8;}
+-		if (sb_showgamedir.value)	{Draw_FunStringWidth((x-8*8), y, si->gamedir, 8*8, false, false); x-=9*8;}
+-		if (sb_showping.value)		{Draw_FunStringWidth((x-3*8), y, *si->brokerid?"---":va("%i", si->ping), 3*8, false, false); x-=4*8;}
+-		if (sb_showaddress.value)	{Draw_FunStringWidth((x-21*8), y, Master_ServerToString(adr, sizeof(adr), si), 21*8, false, false); x-=22*8;}
+-		Draw_FunStringWidth(0, y, si->name, x, false, false);
++		if (sb_showtimelimit.value)	{Draw_FunStringWidth((right-3*8), y, va("%i", si->tl), 3*8, false, false); right-=4*8;}
++		if (sb_showfraglimit.value)	{Draw_FunStringWidth((right-3*8), y, va("%i", si->fl), 3*8, false, false); right-=4*8;}
++		if (sb_showplayers.value)	{Draw_FunStringWidth((right-5*8), y, va("%2i/%2i", si->numhumans, si->maxplayers), 5*8, false, false); right-=6*8;}
++		if (sb_showmap.value)		{Draw_FunStringWidth((right-8*8), y, si->map, 8*8, false, false); right-=9*8;}
++		if (sb_showgamedir.value)	{Draw_FunStringWidth((right-8*8), y, si->gamedir, 8*8, false, false); right-=9*8;}
++		if (sb_showping.value)		{Draw_FunStringWidth((right-3*8), y, *si->brokerid?"---":va("%i", si->ping), 3*8, false, false); right-=4*8;}
++		if (sb_showaddress.value)	{Draw_FunStringWidth((right-21*8), y, Master_ServerToString(adr, sizeof(adr), si), 21*8, false, false); right-=22*8;}
++		Draw_FunStringWidth(left, y, si->name, right-left, false, false);
+ 	}
+ }
+ void MC_EditBox_Key(menuedit_t *edit, int key, unsigned int unicode);
+@@ -409,6 +405,15 @@ static void SL_PreDraw	(emenu_t *menu)
+ 	serverlist_t *info = (serverlist_t*)(menu + 1);
+ 	Master_CheckPollSockets();
+ 
++#ifdef FTE_TARGET_WEB
++	if (!isrefreshing && slist_next_http_refresh < Sys_DoubleTime())
++	{
++		MasterInfo_Refresh(false);
++		isrefreshing = true;
++		slist_next_http_refresh = Sys_DoubleTime() + 5;
++	}
++#endif
++
+ 	if (isrefreshing)
+ 	{
+ 		if (!CL_QueryServers())
+@@ -766,10 +771,12 @@ static void SL_PostDraw	(emenu_t *menu)
+ 	}
+ 	else if (isrefreshing)
+ 	{
++#ifndef FTE_TARGET_WEB
+ 		R2D_ImageColours(1,1,1,1);
+ 		Draw_ApproxTextBox(vid.width/2 - 100-4, vid.height/2 - 24, 200, 64);
+ 		Draw_FunStringWidth(vid.width/2 - 100, vid.height/2 - 8, localtext("Refreshing, please wait"), 200, 2, false);
+ 		Draw_FunStringWidth(vid.width/2 - 100, vid.height/2 + 0, va(localtext("polling %i of %i"), Master_NumPolled(), Master_TotalCount()), 200, 2, false);
++#endif
+ 	}
+ 	else if (!info->numslots)
+ 	{
+@@ -1045,6 +1052,9 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 
+ 	mpic_t *pic;
+ 
++	if (info->numslots <= info->visibleslots)
++		return;
++
+ 	R2D_ImageColours(1,1,1,1);
+ 
+ 	pic = R2D_SafeCachePic("scrollbars/slidebg.tga");
+@@ -1067,13 +1077,13 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ 	}
+ 	else
+ 	{
+-		R2D_ImageColours(SRGBA(0.1, 0.1, 0.2, 1.0));
++		R2D_ImageColours(SRGBA(0.0, 0.0, 0.0, 0.35));
+ 		R2D_FillBlock(x, y, ths->common.width, ths->common.height);
+ 
+ 		y += ((info->scrollpos) / ((float)info->numslots - info->visibleslots)) * (ths->common.height-8);
+ 
+-		R2D_ImageColours(SRGBA(0.35, 0.35, 0.55, 1.0));
+-		R2D_FillBlock(x, y, 8, 8);
++		R2D_ImageColours(SRGBA(0.9, 0.9, 0.9, 0.6));
++		R2D_FillBlock(x, y, 8, 16);
+ 		R2D_ImageColours(1,1,1,1);
+ 	}
+ 
+@@ -1112,10 +1122,14 @@ static void SL_SliderDraw (int x, int y, menucustom_t *ths, emenu_t *menu)
+ }
+ static qboolean SL_SliderKey (menucustom_t *ths, emenu_t *menu, int key, unsigned int unicode)
+ {
++	serverlist_t *info = (serverlist_t*)(menu + 1);
++
++	if (info->numslots <= info->visibleslots)
++		return false;
++
+ 	if (key == K_MOUSE1 || key == K_TOUCH)
+ 	{
+ 		float my;
+-		serverlist_t *info = (serverlist_t*)(menu + 1);
+ 
+ 		my = mousecursor_y;
+ 		my -= ths->common.posy;
+@@ -1221,6 +1235,8 @@ void M_Menu_ServerList2_f(void)
+ 	qboolean descending;
+ 	int sortkey;
+ 	char *sc;
++	int panel_x, panel_w;
++	int list_w;
+ 
+ 	if (!qrenderer)
+ 	{
+@@ -1240,18 +1256,32 @@ void M_Menu_ServerList2_f(void)
+ 
+ 	info = (serverlist_t*)(menu + 1);
+ 
++	panel_w = vid.width;
++	if (vid.height)
++	{
++		int maxw = (vid.height*4)/3;
++		if (panel_w > maxw)
++			panel_w = maxw;
++	}
++	if (panel_w < 320+8)
++		panel_w = 320+8;
++	panel_x = (vid.width - panel_w)/2;
++	if (panel_x < 0)
++		panel_x = 0;
++	list_w = panel_w - 8;
++
+ 	y = 16;
+-	cust = MC_AddCustom(menu, 0, y, NULL, 0, NULL);
++	cust = MC_AddCustom(menu, panel_x, y, NULL, 0, NULL);
+ 	cust->draw = SL_TitlesDraw;
+ 	cust->key = SL_TitlesKey;
+ 	cust->common.height = 8;
+-	cust->common.width = vid.width-8;
++	cust->common.width = list_w;
+ 	y+=8;
+ 
+ 	info->servers_top = y;
+ 	info->visibleslots = (vid.height-info->servers_top - 64);
+ 
+-	cust = MC_AddCustom(menu, vid.width-8, 16, NULL, 0, NULL);
++	cust = MC_AddCustom(menu, panel_x + list_w, 16, NULL, 0, NULL);
+ 	cust->draw = SL_SliderDraw;
+ 	cust->key = SL_SliderKey;
+ 	cust->common.height = info->visibleslots;
+@@ -1260,19 +1290,19 @@ void M_Menu_ServerList2_f(void)
+ 	info->visibleslots = (info->visibleslots-8)/8;
+ 	for (i = 0, y = info->servers_top; i <= info->visibleslots; y +=8, i++)
+ 	{
+-		cust = MC_AddCustom(menu, 0, y, NULL, i, NULL);
++		cust = MC_AddCustom(menu, panel_x, y, NULL, i, NULL);
+ 		if (i==0)
+ 			menu->selecteditem = (menuoption_t*)&cust->common;
+ 		cust->draw = SL_ServerDraw;
+ 		cust->key = SL_ServerKey;
+ 		cust->common.height = 8;
+-		cust->common.width = vid.width-8;
++		cust->common.width = list_w;
+ 		cust->common.noselectionsound = true;
+ 	}
+ 	menu->dontexpand = true;
+ 
+ 	i = 0;
+-	for (x = 256; x < vid.width-64; x += 128)
++	for (x = panel_x + 256; x < panel_x + panel_w - 64; x += 128)
+ 	{
+ 		for (y = vid.height-64+8; y < vid.height; y += 8, i++)
+ 		{
+@@ -1289,7 +1319,7 @@ void M_Menu_ServerList2_f(void)
+ 	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*1, localtext("Ping     "), &sb_showping, 1);
+ 	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*2, localtext("Address  "), &sb_showaddress, 1);
+ 	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*3, localtext("Map      "), &sb_showmap, 1);
+-	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*4, localtext("Gamedir  "), &sb_showgamedir, 1);
++	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*4, localtext("Modname  "), &sb_showgamedir, 1);
+ 	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*5, localtext("Players  "), &sb_showplayers, 1);
+ 	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*6, localtext("Fraglimit"), &sb_showfraglimit, 1);
+ 	MC_AddCheckBox(menu, 0, 72, vid.height - 64+8*7, localtext("Timelimit"), &sb_showtimelimit, 1);
+@@ -1317,7 +1347,7 @@ void M_Menu_ServerList2_f(void)
+ 	info->filter[SLFILTER_HIDEEMPTY] = !!sb_hideempty.value;
+ 	info->filter[SLFILTER_HIDEFULL] = !!sb_hidefull.value;
+ 
+-	info->mappic = (menupicture_t *)MC_AddPicture(menu, vid.width - 64, vid.height - 64, 64, 64, "012345678901234567890123456789012");
++	info->mappic = (menupicture_t *)MC_AddPicture(menu, panel_x + panel_w - 64, vid.height - 64, 64, 64, "012345678901234567890123456789012");
+ 
+ 	descending = false;
+ 
+@@ -1343,11 +1373,17 @@ void M_Menu_ServerList2_f(void)
+ 	}
+ 	Master_SetSortField(sortkey, descending);
+ 
++#ifdef FTE_TARGET_WEB
++	slist_next_http_refresh = 0;
++	MasterInfo_Refresh(false);
++	isrefreshing = true;
++#else
+ 	if (!Master_TotalCount())
+ 	{
+ 		MasterInfo_Refresh(true);
+ 		isrefreshing = true;
+ 	}
++#endif
+ 
+ 	CalcFilters(menu);
+ }
+diff --git a/engine/client/m_multi.c b/engine/client/m_multi.c
+index 98d514e..8d267d5 100644
+--- a/engine/client/m_multi.c
++++ b/engine/client/m_multi.c
+@@ -37,7 +37,6 @@ void M_Menu_MultiPlayer_f (void)
+ 		MC_AddConsoleCommand	(menu, 64, 170, 56,	"Start network server",	"menu_newmulti\n");
+ #endif
+ 		MC_AddConsoleCommand	(menu, 64, 170, 64,	"Player setup",			"menu_setup\n");
+-		MC_AddConsoleCommand	(menu, 64, 170, 72,	"Demos",				"menu_demo\n");
+ 
+ 		menu->cursoritem = (menuoption_t*)MC_AddWhiteText(menu, 48, 0, 40, NULL, false);
+ 		return;
+@@ -54,14 +53,13 @@ void M_Menu_MultiPlayer_f (void)
+ 		MC_AddConsoleCommandHexen2BigFont	(menu, 80, mgt,	"Server List ",	"menu_slist\n");mgt+=20;
+ 		MC_AddConsoleCommandHexen2BigFont	(menu, 80, mgt,	"New Server  ",	"menu_newmulti\n");mgt+=20;
+ 		MC_AddConsoleCommandHexen2BigFont	(menu, 80, mgt,	"Player Setup",	"menu_setup\n");mgt+=20;
+-		MC_AddConsoleCommandHexen2BigFont	(menu, 80, mgt,	"Demos       ",	"menu_demo\n");mgt+=20;
+ 
+ 		menu->cursoritem = (menuoption_t *)MC_AddCursor(menu, &resel, 48, 64);
+ 		return;
+ 	}
+ 	else
+ #endif
+-		if (QBigFontWorks())
++	if (QBigFontWorks())
+ 	{
+ 		MC_AddPicture(menu, 16, 4, 32, 144, "gfx/qplaque.lmp");
+ 		MC_AddCenterPicture(menu, 4, 24, "gfx/p_multi.lmp");
+@@ -72,9 +70,7 @@ void M_Menu_MultiPlayer_f (void)
+ #ifdef HAVE_PACKET
+ 		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Quick Connect"), "quickconnect qw\n");mgt+=20;
+ #endif
+-		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("New Server  "),	"menu_newmulti\n");mgt+=20;
+ 		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Player Setup"),	"menu_setup\n");mgt+=20;
+-		MC_AddConsoleCommandQBigFont	(menu, 72, mgt,	localtext("Demos       "),	"menu_demo\n");mgt+=20;
+ 
+ 		menu->cursoritem = (menuoption_t*)MC_AddCursor(menu, &resel, 54, 32);
+ 		return;
+@@ -98,18 +94,10 @@ void M_Menu_MultiPlayer_f (void)
+ 		menu->selecteditem = (menuoption_t*)b;
+ 		b->common.height = 20;
+ 		b->common.width = width;
+-		b = MC_AddConsoleCommand(menu, 72, 320, 52, "", "menu_newmulti\n");
+-		b->common.height = 20;
+-		b->common.width = width;
+ 		b = MC_AddConsoleCommand(menu, 72, 320, 72, "", "menu_setup\n");
+ 		b->common.height = 20;
+ 		b->common.width = width;
+ 
+-		b = MC_AddConsoleCommand(menu, 72, 320, 92, "", "menu_demo\n");
+-		MC_AddWhiteText(menu, 72, 0, 92+20/2-6, localtext("^aDemos"), false);
+-		b->common.height = 20;
+-		b->common.width = width;
+-
+ #ifdef HAVE_PACKET
+ 		b = MC_AddConsoleCommand(menu, 72, 320, 112, "", "quickconnect qw\n");
+ 		MC_AddWhiteText(menu, 72, 0, 112+20/2-6, localtext("^aQuick Connect"), false);
+diff --git a/engine/client/m_single.c b/engine/client/m_single.c
+index d41a009..829c53c 100644
+--- a/engine/client/m_single.c
++++ b/engine/client/m_single.c
+@@ -423,7 +423,6 @@ void M_Menu_SinglePlayer_f (void)
+ 
+ #if MAX_SPLITS > 1
+ 				y+=8;
+-				MC_AddCvarCombo(menu, 72, 170, y, localtext("Splitscreen"), &cl_splitscreen, splitopts, splitvals);
+ #endif
+ 			}
+ 
+@@ -561,7 +560,6 @@ void M_Menu_SinglePlayer_f (void)
+ 				MC_AddConsoleCommandHexen2BigFont(menu, 80, y+=20,		"Load Game",	"menu_load\n");
+ #endif
+ 
+-				MC_AddCvarCombo(menu, 72, 170, y+=20, localtext("Splitscreen"), &cl_splitscreen, splitopts, splitvals);
+ 			}
+ 
+ 			menu->cursoritem = (menuoption_t *)MC_AddCursor(menu, menu->selecteditem?NULL:&resel, 56, menu->selecteditem?menu->selecteditem->common.posy:0);
+@@ -630,12 +628,6 @@ void M_Menu_SinglePlayer_f (void)
+ 		b->common.height = 20;
+ #endif
+ 
+-#if MAX_SPLITS > 1
+-		b = (menubutton_t*)MC_AddCvarCombo(menu, 72, 72+width/2, 92, "", &cl_splitscreen, splitopts, splitvals);
+-		MC_AddRedText(menu, 72, 0, 92, localtext("Splitscreen"), false);
+-		b->common.height = 20;
+-		b->common.width = width;
+-#endif
+ 
+ 		menu->cursoritem = (menuoption_t*)MC_AddCursor(menu, &resel, 54, 32);
+ 	}
+diff --git a/engine/client/net_master.c b/engine/client/net_master.c
+index 30f6c85..5728c5e 100644
+--- a/engine/client/net_master.c
++++ b/engine/client/net_master.c
+@@ -2714,6 +2714,8 @@ static void MasterInfo_ProcessHTTPInfo(serverinfo_t *srv, const char *info)
+ 		Q_strncpyz(srv->map, Info_ValueForKey(info, "mapname"), sizeof(srv->map));
+ 		srv->players = atoi(Info_ValueForKey(info, "clients"));
+ 		srv->maxplayers = atoi(Info_ValueForKey(info, "maxclients"));
++		srv->tl = atoi(Info_ValueForKey(info, "timelimit"));
++		srv->fl = atoi(Info_ValueForKey(info, "fraglimit"));
+ 
+ 		if (!MasterInfo_ReadProtocol(srv, info))
+ 			srv->special = (srv->special&~SS_PROTOCOLMASK)|SS_UNKNOWN;	//assume its an older fteqw server.
+diff --git a/engine/server/sv_main.c b/engine/server/sv_main.c
+index 8bc36e9..12d5a53 100644
+--- a/engine/server/sv_main.c
++++ b/engine/server/sv_main.c
+@@ -1406,6 +1406,7 @@ static void SVC_GetInfo (const char *challenge, int fullstatus)
+ 	*resp++ = '\n';
+ 
+ 	SV_GeneratePublicServerinfo(resp, response+sizeof(response));
++	resp += strlen(resp) + 1;
+ 
+ 	if (fullstatus)
+ 	{

@@ -1,26 +1,21 @@
+x-env: &env
+  GAMEDIR: id1
+  # Public port served by nginx (mapped via `ports:` below).
+  # Note: nginx listens on 26000 inside the container.
+  SERVER_PORT: "26000"
+
 x-defaults: &defaults
   image: fteqw-webquake
   build:
     context: .
     network: host
-  environment:
-    GAMEDIR: id1
-    SERVER_PORT: "27500"
+  environment: *env
   restart: unless-stopped
   volumes:
-    - ./gamedata:/gamedata:ro  
-  networks:
-    - q1
+    - ./gamedata:/gamedata:ro
 services:
-  server:
+  fteqw:
     <<: *defaults
-    command: ["server"]
+    # Runs both nginx (WASM client) + fteqw-sv (NetQuake), with live `/servers.txt`.
     ports:
-    - 27500:27500
-  client:
-    <<: *defaults
-    command: ["client"]
-    ports:
-    - 8080:8080
-networks:
-  q1:
+      - 26000:26000
