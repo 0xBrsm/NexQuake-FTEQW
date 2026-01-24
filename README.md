@@ -15,7 +15,7 @@ The image does **not** ship any game data. Mount your Quake data into the contai
 ## Quickstart (docker compose)
 
 1) Put your game data under `./gamedata` (example: `./gamedata/id1/pak0.pak`).
-2) Run:
+2) Start the container:
 
 ```bash
 docker compose up --build
@@ -24,30 +24,13 @@ docker compose up --build
 - Web client: `http://localhost:26000`
 - Gameplay websocket: `ws://localhost:26000/nq`
 
-## Quickstart (docker run)
-
-```bash
-docker run --rm -it \
-  -v /path/to/quake:/gamedata:ro \
-  -p 26000:26000 \
-  fteqw-webquake:latest
-```
+To run in the background: `docker compose up -d --build`.
 
 ## Notes on game data
 
 - Do not commit/share commercial game data (for Quake this includes `pak0.pak`/`pak1.pak`).
 - The repo keeps `gamedata/` tracked but empty; mount your own data at runtime.
 - The web client fetches packages from the container at `/gamedata/...` when it loads (via the generated `/index.fmf` manifest).
-
-## Build (multi-arch)
-
-```bash
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  -t yourname/fteqw-webquake:latest \
-  --push \
-  .
-```
 
 ## Runtime knobs
 
