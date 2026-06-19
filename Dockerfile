@@ -2,6 +2,7 @@
 
 ARG DEBIAN_VERSION=bookworm
 ARG EMSDK_IMAGE=emscripten/emsdk:latest
+ARG GO_IMAGE=golang:1.24
 
 ARG FTEQW_REPO=https://github.com/fte-team/fteqw.git
 ARG FTEQW_REF=
@@ -40,38 +41,50 @@ COPY --from=fteqw-source /build/fteqw /build/fteqw
 WORKDIR /build/fteqw/engine
 RUN make web-rel
 
+FROM ${GO_IMAGE} AS nexus-builder
+WORKDIR /src/nexus
+COPY nexus/go.mod nexus/go.sum ./
+RUN go mod download
+COPY nexus/ ./
+RUN CGO_ENABLED=0 go build -trimpath -o /out/nexus .
+
 FROM debian:${DEBIAN_VERSION}-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates netcat-openbsd nginx zlib1g \
+    bash ca-certificates zlib1g \
   && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --shell /usr/sbin/nologin --uid 10001 fteqw
+RUN mkdir -p /app/bin /app/client/gamedata /app/etc /app/game /app/logs /app/cd
 
-RUN mkdir -p /opt/fteqw/bin /opt/fteqw/web /gamedata /tmp/nginx \
-  && chown -R fteqw:fteqw /opt/fteqw /gamedata /tmp/nginx
+# Server + relay binaries (on PATH via BIN_DIR; servers.ini calls bare "fteqw-sv").
+COPY --from=server-builder /build/fteqw/engine/release/fteqw-sv /app/bin/fteqw-sv
+COPY --from=nexus-builder  /out/nexus                            /app/bin/nexus
 
-COPY --from=server-builder /build/fteqw/engine/release/fteqw-sv /opt/fteqw/bin/fteqw-sv
+# FTE WASM client + the trunk boot page.
+COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.js      /app/client/ftewebgl.js
+COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.wasm    /app/client/ftewebgl.wasm
+COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.js.gz   /app/client/ftewebgl.js.gz
+COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.wasm.gz /app/client/ftewebgl.wasm.gz
+COPY client/index.html /app/client/index.html
 
-COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.js /opt/fteqw/web/ftewebgl.js
-COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.wasm /opt/fteqw/web/ftewebgl.wasm
-COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.js.gz /opt/fteqw/web/ftewebgl.js.gz
-COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.wasm.gz /opt/fteqw/web/ftewebgl.wasm.gz
+# Orchestration config: servers.ini (launch plan) + game.json (asset catalog).
+COPY etc/servers.ini /app/game/servers.ini
+COPY etc/game.json   /app/etc/game.json
 
-COPY web/index.html /opt/fteqw/web/index.html
-COPY web/servers.txt /opt/fteqw/web/servers.txt
-COPY web/servers.info /opt/fteqw/web/servers.info
-COPY docker/nginx.conf /etc/nginx/nginx.conf
-COPY docker/entrypoint.sh /opt/fteqw/entrypoint.sh
-COPY docker/serverlist-poller.sh /opt/fteqw/serverlist-poller.sh
+COPY docker/entrypoint-nexus.sh /app/entrypoint.sh
+RUN chmod +x /app/bin/fteqw-sv /app/bin/nexus /app/entrypoint.sh
 
-RUN chmod +x /opt/fteqw/bin/fteqw-sv /opt/fteqw/entrypoint.sh \
-    /opt/fteqw/serverlist-poller.sh \
-  && chown -R fteqw:fteqw /opt/fteqw
+ENV HTTP_PORT=26000 \
+    GAME_DIR=/app/game \
+    CFG_DIR=/app/etc \
+    CLIENT_DIR=/app/client \
+    LOGS_DIR=/app/logs \
+    BIN_DIR=/app/bin \
+    SERVER_DIR=/app/bin \
+    CD_DIR=/app/cd \
+    GAMEDIR=id1
 
-USER fteqw
-WORKDIR /opt/fteqw
-
+WORKDIR /app
 EXPOSE 26000/tcp
 
-ENTRYPOINT ["/opt/fteqw/entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD []

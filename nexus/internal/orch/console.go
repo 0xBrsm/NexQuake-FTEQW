@@ -114,7 +114,8 @@ func parseSearchPathConsoleLine(line string) (entry string, isPathLine bool) {
 }
 
 type serverConsole struct {
-	pty *os.File
+	out *os.File // server stdout/stderr (read side of a pipe)
+	in  *os.File // server stdin (write side of a pipe) for console commands
 
 	writeMu   sync.Mutex
 	commandMu sync.Mutex
@@ -131,9 +132,10 @@ type serverConsole struct {
 	historyCap int
 }
 
-func newServerConsole(pty *os.File) *serverConsole {
+func newServerConsole(out, in *os.File) *serverConsole {
 	return &serverConsole{
-		pty:                 pty,
+		out:                 out,
+		in:                  in,
 		subscribers:         make(map[int]chan string),
 		suppressedRelayEcho: make(map[string]int),
 		historyCap:          2048,
@@ -145,7 +147,7 @@ func (c *serverConsole) writeCommand(cmd string) error {
 }
 
 func (c *serverConsole) writeCommandWithOptions(cmd string, suppressRelayEcho bool) error {
-	if c.pty == nil {
+	if c.in == nil {
 		return io.ErrClosedPipe
 	}
 	line := formatServerConsoleCommand(cmd)
@@ -159,7 +161,7 @@ func (c *serverConsole) writeCommandWithOptions(cmd string, suppressRelayEcho bo
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	_, err := io.WriteString(c.pty, line)
+	_, err := io.WriteString(c.in, line)
 	if err != nil && suppressRelayEcho {
 		c.consumeSuppressedRelayEchoLine(line)
 	}
@@ -339,12 +341,12 @@ func (c *serverConsole) closeSubscribers() {
 }
 
 func (c *serverConsole) run(logFile *os.File, formatLogLine func(string, time.Time) string) {
-	if c.pty == nil {
+	if c.out == nil {
 		return
 	}
 	defer c.closeSubscribers()
 
-	reader := bufio.NewReader(c.pty)
+	reader := bufio.NewReader(c.out)
 	for {
 		line, err := reader.ReadString('\n')
 		if len(line) > 0 {

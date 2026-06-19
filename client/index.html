@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NexQuake-FTE</title>
+    <style>
+      html, body { background:#000; color:#aaa; height:100%; width:100%; margin:0; }
+      #status {
+        position:fixed; left:0; top:0; right:0; padding:8px 12px;
+        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; font-size:14px;
+        background:rgba(0,0,0,0.75); z-index:2;
+      }
+      canvas { display:block; width:100%; height:100%; }
+    </style>
+  </head>
+  <body>
+    <div id="status">Loading…</div>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <script>
+      // First-light trunk smoke: boot the FTE client and auto-connect to the
+      // dedicated server through the Nexus trunk relay (ws -> /connect -> UDP).
+      // The 2-byte-port-prefixed datagram framing lives in the engine's NP_TRUNK
+      // driver; the page just hands it a trunk:// URL on this same origin.
+      (function () {
+        var host = window.location.host;
+        var connectUrl = "trunk://" + host + "/connect";
+        window.Module = {
+          autostart: true,
+          canvas: document.getElementById("canvas"),
+          arguments: [
+            "-manifest", "/index.fmf",
+            "-game", "id1",
+            "+set", "cl_web_connect_host", host,
+            "+connect", connectUrl
+          ],
+          print: function (m) { console.log(m); },
+          printErr: function (m) { console.error(m); },
+          setStatus: function (t) {
+            var e = document.getElementById("status");
+            if (e) e.textContent = t || "";
+          }
+        };
+        var s = document.createElement("script");
+        s.src = "ftewebgl.js";
+        s.async = true;
+        s.addEventListener("error", function () {
+          document.getElementById("status").textContent = "Failed to load ftewebgl.js";
+        });
+        document.head.appendChild(s);
+      })();
+    </script>
+  </body>
+</html>

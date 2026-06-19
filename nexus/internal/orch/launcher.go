@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/0xBrsm/NexQuake/nexus/internal/assets"
-	"github.com/creack/pty"
 )
 
 const serverStartupCCREPTimeout = 10 * time.Second
@@ -186,27 +185,36 @@ func (m *ServerManager) startServer(runtimeBasedir string, launch serverLaunch, 
 	cmd.Dir = runtimeBasedir
 	launchLabel := formatLaunchLabel(launch)
 
-	ptyParent, ptyChild, err := pty.Open()
+	// fteqw-sv writes to stdout/stderr expecting a regular file or tty; on a tty
+	// it goes interactive and exits, and on a pipe a lagging/closed reader raises
+	// SIGPIPE (which FTE does not ignore) and kills it. A regular file is the only
+	// stdout that keeps it reliably alive, so point stdout/stderr at the log file
+	// directly. Console commands (port/path/rcon) still go in over a stdin pipe.
+	// NOTE: live console capture (slist polling, console relay) is degraded with
+	// this approach and will be restored by tailing the log file; the direct
+	// trunk connect path does not depend on it.
+	stdinR, stdinW, err := os.Pipe()
 	if err != nil {
 		_ = logFile.Close()
-		return nil, fmt.Errorf("open pty for server %s bin=%q: %w", launchLabel, launch.Binary, err)
+		return nil, fmt.Errorf("open stdin pipe for server %s bin=%q: %w", launchLabel, launch.Binary, err)
 	}
-	cmd.Stdin = ptyChild
-	cmd.Stdout = ptyChild
-	cmd.Stderr = ptyChild
+	cmd.Stdin = stdinR
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
 
 	slog.Debug(fmt.Sprintf("Starting server %s: %s %s", launchLabel, launch.Binary, strings.Join(launch.Args, " ")))
 
 	if err := cmd.Start(); err != nil {
-		_ = ptyParent.Close()
-		_ = ptyChild.Close()
+		_ = stdinR.Close()
+		_ = stdinW.Close()
 		_ = logFile.Close()
 		return nil, fmt.Errorf("start server %s bin=%q: %w", launchLabel, launch.Binary, err)
 	}
 
-	_ = ptyChild.Close()
+	// The child holds its own copy of the stdin read end; close ours.
+	_ = stdinR.Close()
 
-	console := newServerConsole(ptyParent)
+	console := newServerConsole(nil, stdinW)
 	srv := &managedServer{
 		Cmd:     cmd,
 		Console: console,
@@ -224,7 +232,7 @@ func (m *ServerManager) startServer(runtimeBasedir string, launch serverLaunch, 
 		}()
 
 		err := cmd.Wait()
-		_ = ptyParent.Close()
+		_ = stdinW.Close()
 		<-copyDone
 		srv.done <- err
 		_ = logFile.Close()
