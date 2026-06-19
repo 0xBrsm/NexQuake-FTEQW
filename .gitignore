@@ -6,3 +6,6 @@ gamedata/**
 .DS_Store
 tmp/
 .ftesrc/
+node_modules/
+package.json
+package-lock.json
