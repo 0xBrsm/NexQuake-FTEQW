@@ -39,19 +39,27 @@ fi
 # One configurable game per deployment (the "play Q1, Q2, or Q3" switch). GAMEDIR
 # selects the engine game profile and a default starting map; SV_MAP overrides.
 # EXTRA holds per-game server cvars.
+# GAME_MODE is FTE's game-selection switch (-quake/-quake2/-quake3). It is what
+# actually puts the engine into Q1/Q2/Q3 mode: protocol version, scheme, native
+# gamecode, and the base gamedir. Passing only "-game baseq2" leaves the server
+# in Quake1 mode, so a Quake2 client is rejected with "Game mismatch". The mode
+# flag also sets the base gamedir (baseq2/baseq3), so a separate -game is not
+# needed for the base games. Each mode's cfg pins that game's default sv_port,
+# but the trunk requires a uniform 27500; the command-line "+set sv_port 27500"
+# below runs (with +map) after the mode cfg, so it wins at socket-bind time.
 EXTRA=""
 case "$GAMEDIR" in
-  id1)    FTE_GAME="quake";  DEF_MAP="start" ;;
-  baseq2) FTE_GAME="quake2"; DEF_MAP="base1"
+  id1)    FTE_GAME="quake";  DEF_MAP="start"; GAME_MODE="-quake" ;;
+  baseq2) FTE_GAME="quake2"; DEF_MAP="base1"; GAME_MODE="-quake2"
           # FTE has no built-in Q2 gamecode; it loads a native baseq2/game.so.
-          # Provision the bundled yamagi build if the gamedir lacks one, and allow
-          # FTE to load native gamecode from the gamedir.
+          # Provision the bundled yamagi build if the gamedir lacks one. (-quake2
+          # already implies com_gamedirnativecode 1; keep EXTRA for clarity.)
           if [ -d "$CLIENT_DIR/gamedata/baseq2" ] && [ ! -f "$CLIENT_DIR/gamedata/baseq2/game.so" ] && [ -f /app/q2game/game.so ]; then
             cp /app/q2game/game.so "$CLIENT_DIR/gamedata/baseq2/game.so" && echo "Provisioned baseq2/game.so (yamagi)"
           fi
           EXTRA="+set com_gamedirnativecode 1" ;;
-  baseq3) FTE_GAME="quake3"; DEF_MAP="q3dm1" ;;
-  *)      FTE_GAME="quake";  DEF_MAP="start" ;;
+  baseq3) FTE_GAME="quake3"; DEF_MAP="q3dm1"; GAME_MODE="-quake3" ;;
+  *)      FTE_GAME="quake";  DEF_MAP="start"; GAME_MODE="-quake" ;;
 esac
 MAP="${SV_MAP:-$DEF_MAP}"
 
@@ -60,7 +68,7 @@ MAP="${SV_MAP:-$DEF_MAP}"
 # game/map track GAMEDIR.
 cat > "$GAME_DIR/servers.ini" <<INI
 # Generated from GAMEDIR=$GAMEDIR. Trunk delivers plain UDP to fteqw-sv.
-fteqw-sv -dedicated -basedir $CLIENT_DIR/gamedata -game $GAMEDIR +set sv_port 27500 +set sv_public 0 +set hostname "NexQuake-FTE ($GAMEDIR)" $EXTRA +map $MAP
+fteqw-sv -dedicated $GAME_MODE -basedir $CLIENT_DIR/gamedata +set sv_port 27500 +set sv_public 0 +set hostname "NexQuake-FTE ($GAMEDIR)" $EXTRA +map $MAP
 INI
 
 # FTE package manifest for the client (game profile + the paks/pk3s present).
