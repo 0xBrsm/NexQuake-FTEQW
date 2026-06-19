@@ -48,16 +48,30 @@ RUN go mod download
 COPY nexus/ ./
 RUN CGO_ENABLED=0 go build -trimpath -o /out/nexus .
 
+# Quake II gamecode: FTE has no built-in Q2 game logic and loads a native
+# baseq2/game.so. Retail/GOG data ships only the Windows DLL, so build the
+# GPL yamagi-quake2 baseq2 game library (classic Q2 game API v3) for this arch.
+FROM debian:${DEBIAN_VERSION} AS q2game-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git build-essential \
+  && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/yquake2/yquake2.git /src/yquake2
+WORKDIR /src/yquake2
+RUN make game   # -> release/baseq2/game.so
+
 FROM debian:${DEBIAN_VERSION}-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash ca-certificates zlib1g openssl \
   && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /app/bin /app/client/gamedata /app/etc /app/game /app/logs /app/cd /app/cert
+RUN mkdir -p /app/bin /app/client/gamedata /app/etc /app/game /app/logs /app/cd /app/cert /app/q2game
 
 # Server + relay binaries (on PATH via BIN_DIR; servers.ini calls bare "fteqw-sv").
 COPY --from=server-builder /build/fteqw/engine/release/fteqw-sv /app/bin/fteqw-sv
 COPY --from=nexus-builder  /out/nexus                            /app/bin/nexus
+
+# Bundled Q2 gamecode; the entrypoint provisions it into baseq2/ when serving Q2.
+COPY --from=q2game-builder /src/yquake2/release/baseq2/game.so   /app/q2game/game.so
 
 # FTE WASM client + the trunk boot page.
 COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.js      /app/client/ftewebgl.js
