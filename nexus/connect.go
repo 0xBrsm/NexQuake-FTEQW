@@ -150,6 +150,24 @@ func (app *nexusApp) handleStart(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, base64.StdEncoding.EncodeToString(bundle))
 }
 
+// handleServersTxt serves the FTE client's HTTP master list ("masterhttp"): one
+// line per server, "<connect-url> <infostring>". Every entry points at this
+// origin's trunk /connect so the in-game browser only ever lists Nexus-managed
+// games (never the public FTE master), and joining tunnels through Nexus. The
+// server's live status is fetched with a one-shot getinfo probe.
+func (app *nexusApp) handleServersTxt(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+
+	connectURL := "trunk://" + r.Host + "/connect"
+	info, ok := orch.ProbeServerInfostring(app.cfg.gameServerAddr, time.Second)
+	if !ok {
+		// Keep the server listed (and joinable) even if the status probe blips.
+		info = `\hostname\NexQuake-FTE\mapname\?\clients\0\maxclients\0\`
+	}
+	_, _ = fmt.Fprintf(w, "%s %s\n", connectURL, info)
+}
+
 // trunkSession runs the per-request bookkeeping that's identical across
 // tunnel transports: identity resolution, connect/disconnect logging, and
 // bridging the transport-specific upgrade into trunk.NewConn via the supplied
@@ -412,6 +430,9 @@ func (app *nexusApp) newMux() *http.ServeMux {
 
 	mux.Handle("/start", addIsolationHeaders(http.HandlerFunc(app.handleStart)))
 	mux.Handle("/nq/", addIsolationHeaders(app.assetServer.AssetHandler()))
+
+	// FTE in-game server browser (masterhttp): lists only Nexus-managed games.
+	mux.HandleFunc("GET /servers.txt", app.handleServersTxt)
 
 	clientFS := http.FileServerFS(os.DirFS(app.cfg.clientDir))
 	mux.Handle("/", addIsolationHeaders(cacheControlClient(clientFS)))

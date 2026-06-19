@@ -46,6 +46,49 @@ func buildGetInfoQuery() []byte {
 	return append([]byte(nil), getInfoQuery...)
 }
 
+// ProbeServerInfostring sends a single dpmaster-style getinfo query to a backend
+// server at addr (host:port) and returns the raw backslash-delimited infostring
+// from its infoResponse (e.g. `\hostname\foo\mapname\start\...`). It is a
+// self-contained one-shot probe (no poller/console state) used to build the
+// HTTP server list the FTE client browses. ok is false on any timeout or
+// malformed reply.
+func ProbeServerInfostring(addr string, timeout time.Duration) (infostring string, ok bool) {
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return "", false
+	}
+	conn, err := net.DialUDP("udp", nil, udpAddr)
+	if err != nil {
+		return "", false
+	}
+	defer conn.Close()
+
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	if _, err := conn.Write(buildGetInfoQuery()); err != nil {
+		return "", false
+	}
+
+	buf := make([]byte, 2048)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return "", false
+	}
+	payload := buf[:n]
+	if !bytes.HasPrefix(payload, connectionlessHeader) {
+		return "", false
+	}
+	rest := payload[len(connectionlessHeader):]
+	if !bytes.HasPrefix(rest, infoResponsePrefix) {
+		return "", false
+	}
+	rest = rest[len(infoResponsePrefix):]
+	idx := bytes.IndexByte(rest, '\\')
+	if idx < 0 {
+		return "", false
+	}
+	return strings.Trim(string(rest[idx:]), "\r\n"), true
+}
+
 // serverInfoFields holds the subset of an FTE infoResponse infostring that the
 // orchestrator consumes.
 type serverInfoFields struct {

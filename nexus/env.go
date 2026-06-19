@@ -23,6 +23,7 @@ type runtimeConfig struct {
 	binDir                 string
 	serverBinDir           string
 	clientDir              string
+	gameServerAddr         string
 	vfsPrefetchConcurrency int
 	clientAutoSMenu        bool
 	clientSendArgs         []string
@@ -42,6 +43,7 @@ func loadRuntimeConfig() runtimeConfig {
 		binDir:                 getEnv("BIN_DIR", "/app/bin"),
 		serverBinDir:           getEnv("SERVER_DIR", "/app/server"),
 		clientDir:              getEnv("CLIENT_DIR", "/app/bin/nqwasm"),
+		gameServerAddr:         getEnv("GAME_SV_ADDR", "127.0.0.1:26000"),
 		vfsPrefetchConcurrency: getEnvIntMin("CL_CONCURRENCY", 16, 0),
 		clientAutoSMenu:        getEnvBool01("CL_SMENU", false),
 		clientSendArgs:         getEnvArgs("CL_ARGS", nil),

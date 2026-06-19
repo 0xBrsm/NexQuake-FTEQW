@@ -25,6 +25,13 @@
       (function () {
         var host = window.location.host;
         var connectUrl = "trunk://" + host + "/connect";
+
+        // Lock the in-game server browser to Nexus-managed games only: inject a
+        // masters.txt so FTE queries our HTTP server list (masterhttp) instead of
+        // the public FTE master servers. Each listed server connects over trunk.
+        var serversUrl = window.location.origin + "/servers.txt";
+        var mastersTxt = serversUrl + " masterhttp:nq Servers\n";
+
         window.Module = {
           autostart: true,
           canvas: document.getElementById("canvas"),
@@ -34,6 +41,9 @@
             "+set", "cl_web_connect_host", host,
             "+connect", connectUrl
           ],
+          files: {
+            "masters.txt": new TextEncoder().encode(mastersTxt).buffer
+          },
           print: function (m) { console.log(m); },
           printErr: function (m) { console.error(m); },
           setStatus: function (t) {
