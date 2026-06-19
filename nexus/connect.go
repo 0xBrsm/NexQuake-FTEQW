@@ -187,12 +187,12 @@ func (app *nexusApp) trunkSession(
 		return
 	}
 
-	// NQIP identity announcement: the WASM client (net_nqchan.c) reads
-	// "NQIP" + 4-byte VirtualIP off the control channel on connect to
-	// learn the address Quake's protocol embeds in CCREQ_CONNECT.
+	// The trunk tunnel is a protocol-agnostic datagram pipe: the FTE client
+	// runs its own native handshake over it and never needs to be told its
+	// VirtualIP, so no identity frame is announced. Nexus still binds the
+	// per-session UDP socket to the allocated VirtualIP server-side, which is
+	// what keeps fteqw-sv's view of clients distinct.
 	vip := tc.VirtualIP()
-	_ = tc.SendControl(append([]byte("NQIP"), vip[:]...))
-
 	vipStr := net.IP(vip[:]).String()
 	slog.Info(fmt.Sprintf("%s connected (%s)", client.ID, transportName),
 		"addr", displayAddr, "vip", vipStr)

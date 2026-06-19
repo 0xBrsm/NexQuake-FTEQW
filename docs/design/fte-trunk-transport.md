@@ -1,6 +1,24 @@
 # FTE Trunk Transport — Implementation Design
 
-**Status:** design only (not yet implemented)
+> ## As-built notes (implemented in `patches/fteqw-trunk.patch`)
+> The driver is implemented and compiles/links into the WASM client. Deltas from the design below:
+> - **No NQIP / no nqchan at all.** Per project steer, the driver does not parse NQIP — it
+>   consumes-and-discards *every* port-0 control frame. The trunk is a pure agnostic datagram
+>   pipe; FTE uses its own native handshake. The Nexus-side NQIP announcement was **removed**
+>   from `nexus/connect.go` (the VirtualIP is still bound server-side for distinct UDP sources).
+> - **WS variant reuses FTE's existing `emscriptenfte_ws_*` JS** (connect/send/recv/close) — the
+>   2-byte framing is done entirely in C, so **no `ftejslib.js`/`.h` changes** for v1. New JS is
+>   only needed for the WebTransport variant.
+> - **Subprotocol is `"binary"`**, not `'fteqw-trunk'` — confirmed from Nexus's
+>   `trunk/websocket` Upgrader, which advertises `Subprotocols: ["binary"]`. A browser
+>   `WebSocket` requesting an unaccepted subprotocol fails the handshake, so this must match.
+> - **`NET_EnsureRoute` (`net_wins.c` second prot switch) also needed `NP_TRUNK`** added beside
+>   `NP_WS`, in addition to the establish dispatch — otherwise the connection never routes.
+> - Server port is fixed at **26000** for v1 (`TRUNK_DEFAULT_SVPORT`); `#port` override deferred.
+> - Confirmed Nexus is 1 WS message ⇔ 1 frame ⇔ 1 UDP datagram, and `udpWrite` routes by the
+>   2-byte dest port to `127.0.0.1:<port>` — so fteqw-sv must listen on UDP 26000.
+
+**Status:** implemented (WS variant); design reference below
 **Goal:** Let the FTE WebAssembly/Emscripten browser client reach a plain‑UDP `fteqw-sv`
 through the Nexus relay, instead of via FTE's native WebSocket/WebRTC paths.
 

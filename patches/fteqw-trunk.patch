@@ -1,0 +1,239 @@
+diff --git a/engine/client/cl_main.c b/engine/client/cl_main.c
+index da3ee80..39bf5a8 100644
+--- a/engine/client/cl_main.c
++++ b/engine/client/cl_main.c
+@@ -1847,6 +1847,10 @@ static qboolean CL_WebConnectAllowed(const char *server)
+ 		p = server + 5;
+ 	else if (!strncmp(server, "wss://", 6))
+ 		p = server + 6;
++	else if (!strncmp(server, "trunk://", 8))
++		p = server + 8;
++	else if (!strncmp(server, "trunks://", 9))
++		p = server + 9;
+ 	else
+ 		return false;
+ 
+@@ -1860,7 +1864,7 @@ static qboolean CL_WebConnectAllowed(const char *server)
+ 	path = hend;
+ 	if (*path != '/')
+ 		return false;
+-	if (strncmp(path, "/nq", 3))
++	if (strncmp(path, "/nq", 3) && strncmp(path, "/connect", 8))
+ 		return false;
+ 
+ 	return true;
+diff --git a/engine/common/net.h b/engine/common/net.h
+index c604e96..05d1035 100644
+--- a/engine/common/net.h
++++ b/engine/common/net.h
+@@ -64,6 +64,7 @@ typedef enum {
+ 	NP_NATPMP,	//server-only scheme for registering public ports.
+ 	NP_RTC_TCP,
+ 	NP_RTC_TLS,	//really need a better way to do this than two copies of every protocol...
++	NP_TRUNK,	//Nexus trunk relay: 2-byte BE dest-port-prefixed datagrams over ws(s) to /connect
+ 
+ 	NP_INVALID
+ } netproto_t;
+diff --git a/engine/common/net_wins.c b/engine/common/net_wins.c
+index 3af47a0..29bbc54 100644
+--- a/engine/common/net_wins.c
++++ b/engine/common/net_wins.c
+@@ -845,6 +845,7 @@ char	*NET_AdrToString (char *s, int len, netadr_t *a)
+ 	case NP_NATPMP:	prot = "natpmp://";	break;
+ 	case NP_RTC_TCP:prot = "rtc://";	break;
+ 	case NP_RTC_TLS:prot = "rtcs://";	break;
++	case NP_TRUNK:	prot = "trunk://";	break;
+ 	}
+ 
+ 	switch(a->type)
+@@ -1098,6 +1099,7 @@ char	*NET_BaseAdrToString (char *s, int len, netadr_t *a)
+ 	case NP_NATPMP:	prot = "natpmp://";	break;
+ 	case NP_RTC_TCP:prot = "rtc://";	break;
+ 	case NP_RTC_TLS:prot = "rtcs://";	break;
++	case NP_TRUNK:	prot = "";	break;	//scheme already in websocketurl
+ 	}
+ 
+ 	switch(a->type)
+@@ -1632,6 +1634,8 @@ static const struct urischeme_s urischemes[] =
+ 	{"wss://",	NP_WSS,		NA_WEBSOCKET, URISCHEME_NEEDSRESOURCE},
+ 	{"tcp://",	NP_WS,		NA_WEBSOCKET, URISCHEME_NEEDSRESOURCE},	//fake it
+ 	{"tls://",	NP_WSS,		NA_WEBSOCKET, URISCHEME_NEEDSRESOURCE},	//fake it
++	{"trunk://",	NP_TRUNK,	NA_WEBSOCKET, URISCHEME_NEEDSRESOURCE},	//Nexus relay
++	{"trunks://",	NP_TRUNK,	NA_WEBSOCKET, URISCHEME_NEEDSRESOURCE},	//Nexus relay (wss)
+ #endif
+ #ifdef HAVE_DTLS
+ 	{"dtls://",	NP_DTLS,	NA_INVALID},
+@@ -1774,6 +1778,13 @@ size_t	NET_StringToAdr2 (const char *s, int defaultport, netadr_t *a, size_t num
+ 		Q_strncpyz(a->address.websocketurl, s, sizeof(a->address.websocketurl));
+ 		return 1;
+ 	}
++	else if (!strncmp (s, "trunk://", 8) || !strncmp (s, "trunks://", 9))
++	{	//Nexus trunk relay: keep the whole scheme+url; establish maps it to ws(s)://
++		a->type = NA_WEBSOCKET;
++		a->prot = NP_TRUNK;
++		Q_strncpyz(a->address.websocketurl, s, sizeof(a->address.websocketurl));
++		return 1;
++	}
+ 	else if (*net_ice_broker.string)
+ 	{
+ 		a->type = NA_WEBSOCKET;	//figure it out later, to keep it more readable.
+@@ -2932,6 +2943,9 @@ static ftenet_generic_connection_t *FTENET_TCP_EstablishConnection(ftenet_connec
+ #ifdef HAVE_WEBSOCKCL
+ static ftenet_generic_connection_t *FTENET_WebSocket_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo);
+ static ftenet_generic_connection_t *FTENET_WebRTC_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo);
++#ifdef FTE_TARGET_WEB
++static ftenet_generic_connection_t *FTENET_Trunk_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo);
++#endif
+ #endif
+ #ifdef IRCCONNECT
+ static ftenet_generic_connection_t *FTENET_IRCConnect_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo);
+@@ -3527,6 +3541,9 @@ static qboolean FTENET_AddToCollection_Ptr(ftenet_connections_t *col, const char
+ 		if (adr->prot == NP_WSS && adr->type == NA_WEBSOCKET)	establish = FTENET_WebSocket_EstablishConnection; else
+ 		if (adr->prot == NP_RTC_TCP)							establish = FTENET_WebRTC_EstablishConnection; else
+ 		if (adr->prot == NP_RTC_TLS)							establish = FTENET_WebRTC_EstablishConnection; else
++#ifdef FTE_TARGET_WEB
++		if (adr->prot == NP_TRUNK && adr->type == NA_WEBSOCKET)	establish = FTENET_Trunk_EstablishConnection; else
++#endif
+ #endif
+ #ifdef HAVE_NATPMP
+ 		if (adr->prot == NP_NATPMP && adr->type == NA_IP)		establish = FTENET_NATPMP_EstablishConnection; else
+@@ -9314,6 +9331,131 @@ static ftenet_generic_connection_t *FTENET_WebSocket_EstablishConnection(ftenet_
+ 	return NULL;
+ }
+ 
++//Nexus trunk relay transport.
++//Frames on the wire are [portHi][portLo][payload] (2-byte big-endian dest/source UDP port),
++//multiplexed over one ws(s) connection to Nexus /connect. Nexus demuxes to a localhost UDP
++//fteqw-sv and binds a distinct source per session, so FTE just sees ordinary UDP datagrams
++//from "the server" and runs its normal handshake. Port 0 is a control channel that is
++//consumed here and never surfaced to the engine (so the relay can carry its own control
++//messages without FTE needing any relay-specific protocol). Reliability is intentionally not
++//advertised (NET_EnsureRoute leaves NP_TRUNK in the unreliable default) so netchan supplies
++//its own, exactly as over UDP. Trunk-over-WS reuses the existing emscriptenfte_ws_* JS glue;
++//a WebTransport variant can later swap that out behind this same C path.
++#define TRUNK_PORT_HDR		2
++#define TRUNK_CTL_PORT		0
++#define TRUNK_DEFAULT_SVPORT	26000
++typedef struct
++{
++	ftenet_generic_connection_t generic;
++	netadr_t	remoteadr;
++	int			datasock;
++	qboolean	failed;
++	unsigned short serverport;	//host-order UDP port stamped into outbound frame prefixes
++	qbyte		rxframe[MAX_UDP_PACKET];
++	qbyte		txframe[MAX_UDP_PACKET];
++} ftenet_trunk_connection_t;
++
++static void FTENET_Trunk_Close(ftenet_generic_connection_t *gcon)
++{
++	ftenet_trunk_connection_t *t = (void*)gcon;
++	if (t->datasock != INVALID_SOCKET)
++		emscriptenfte_ws_close(t->datasock);
++}
++static qboolean FTENET_Trunk_GetPacket(ftenet_generic_connection_t *gcon)
++{
++	ftenet_trunk_connection_t *t = (void*)gcon;
++	int n, srcport;
++	for (;;)
++	{
++		n = emscriptenfte_ws_recv(t->datasock, t->rxframe, sizeof(t->rxframe));
++		if (n < 0)
++		{
++			t->failed = true;
++			net_message.cursize = 0;
++			return false;
++		}
++		if (n == 0)
++		{
++			net_message.cursize = 0;
++			return false;	//queue drained for this frame
++		}
++		if (n < TRUNK_PORT_HDR)
++			continue;	//runt frame, ignore
++		srcport = (t->rxframe[0]<<8) | t->rxframe[1];
++		if (srcport == TRUNK_CTL_PORT)
++			continue;	//relay control channel - consume, never surface to the engine
++		net_message.cursize = n - TRUNK_PORT_HDR;
++		memcpy(net_message_buffer, t->rxframe+TRUNK_PORT_HDR, net_message.cursize);
++		net_from = t->remoteadr;
++		return true;
++	}
++}
++static neterr_t FTENET_Trunk_SendPacket(ftenet_generic_connection_t *gcon, int length, const void *data, netadr_t *to)
++{
++	ftenet_trunk_connection_t *t = (void*)gcon;
++	int r;
++	if (t->failed)
++		return NETERR_DISCONNECTED;
++	if (!NET_CompareAdr(to, &t->remoteadr))
++		return NETERR_NOROUTE;
++	if (length + TRUNK_PORT_HDR > (int)sizeof(t->txframe))
++		return NETERR_MTU;
++	t->txframe[0] = (t->serverport>>8)&0xff;
++	t->txframe[1] = t->serverport&0xff;
++	memcpy(t->txframe+TRUNK_PORT_HDR, data, length);
++	r = emscriptenfte_ws_send(t->datasock, t->txframe, length+TRUNK_PORT_HDR);
++	if (r < 0)
++		return NETERR_DISCONNECTED;
++	if (r == 0 && length)
++		return NETERR_CLOGGED;	//not connected yet - caller resends
++	return NETERR_SENT;
++}
++static ftenet_generic_connection_t *FTENET_Trunk_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo)
++{
++	ftenet_trunk_connection_t *newcon;
++	int datasocket;
++	char url[sizeof(adr.address.websocketurl)+8];
++	const char *u = adr.address.websocketurl;
++
++	if (col->islisten)
++	{
++		Con_Printf("Browsers cannot host trunk servers.\n");
++		return NULL;
++	}
++
++	//websocketurl holds "trunk://host/connect" or "trunks://host/connect"; map to ws(s)://
++	if (!strncmp(u, "trunks://", 9))
++		Q_snprintfz(url, sizeof(url), "wss://%s", u+9);
++	else if (!strncmp(u, "trunk://", 8))
++		Q_snprintfz(url, sizeof(url), "ws://%s", u+8);
++	else
++		Q_strncpyz(url, u, sizeof(url));
++
++	datasocket = emscriptenfte_ws_connect(url, "binary");	//Nexus advertises the "binary" subprotocol
++	if (datasocket == INVALID_SOCKET)
++	{
++		Con_Printf("Unable to create trunk connection\n");
++		return NULL;
++	}
++
++	newcon = Z_Malloc(sizeof(*newcon));
++	newcon->generic.GetPacket = FTENET_Trunk_GetPacket;
++	newcon->generic.SendPacket = FTENET_Trunk_SendPacket;
++	newcon->generic.Close = FTENET_Trunk_Close;
++	Q_strncpyz(newcon->generic.name, "Trunk", sizeof(newcon->generic.name));
++	newcon->generic.islisten = false;
++	newcon->generic.prot = adr.prot;
++	newcon->generic.addrtype[0] = NA_WEBSOCKET;
++	newcon->generic.addrtype[1] = NA_INVALID;
++	newcon->generic.thesocket = INVALID_SOCKET;
++	newcon->datasock = datasocket;
++	newcon->serverport = TRUNK_DEFAULT_SVPORT;	//fteqw-sv UDP port behind Nexus (v1: fixed)
++
++	adr.port = 0;
++	newcon->remoteadr = adr;
++	return &newcon->generic;
++}
++
+ static ftenet_generic_connection_t *FTENET_WebRTC_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo)
+ {
+ 	qboolean isserver = col->islisten;
+@@ -9665,6 +9807,7 @@ qboolean NET_EnsureRoute(ftenet_connections_t *collection, char *routename, cons
+ 		return false;
+ #endif
+ 
++	case NP_TRUNK:	//Nexus relay - routed like ws to the establish dispatch
+ 	case NP_WS:
+ 	case NP_WSS:
+ 	case NP_TLS:
