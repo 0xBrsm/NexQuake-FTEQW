@@ -47,7 +47,7 @@ index c604e96..05d1035 100644
  	NP_INVALID
  } netproto_t;
 diff --git a/engine/common/net_wins.c b/engine/common/net_wins.c
-index 3af47a0..c4ef9ee 100644
+index 3af47a0..1f86497 100644
 --- a/engine/common/net_wins.c
 +++ b/engine/common/net_wins.c
 @@ -845,6 +845,7 @@ char	*NET_AdrToString (char *s, int len, netadr_t *a)
@@ -109,7 +109,7 @@ index 3af47a0..c4ef9ee 100644
  #endif
  #ifdef HAVE_NATPMP
  		if (adr->prot == NP_NATPMP && adr->type == NA_IP)		establish = FTENET_NATPMP_EstablishConnection; else
-@@ -9314,6 +9331,169 @@ static ftenet_generic_connection_t *FTENET_WebSocket_EstablishConnection(ftenet_
+@@ -9314,6 +9331,209 @@ static ftenet_generic_connection_t *FTENET_WebSocket_EstablishConnection(ftenet_
  	return NULL;
  }
  
@@ -133,6 +133,8 @@ index 3af47a0..c4ef9ee 100644
 +	int			datasock;	//WebSocket handle (INVALID_SOCKET when useWT)
 +	qboolean	useWT;		//true: WebTransport datagrams (Module.nqWt); false: WebSocket
 +	qboolean	failed;
++	double		wtdeadline;	//while useWT and not yet ready: time to fall back to WS (0 once moot)
++	char		wsfallbackurl[256];	//ws(s):// url to fall back to if WebTransport never connects
 +	unsigned short serverport;	//host-order UDP port stamped into outbound frame prefixes
 +	qbyte		rxframe[MAX_UDP_PACKET];
 +	qbyte		txframe[MAX_UDP_PACKET];
@@ -146,6 +148,28 @@ index 3af47a0..c4ef9ee 100644
 +	else if (t->datasock != INVALID_SOCKET)
 +		emscriptenfte_ws_close(t->datasock);
 +}
++//WebTransport (QUIC/UDP) is blocked on some networks and silently refused on
++//others. When it doesn't come up we swap the same trunk connection over to
++//WebSocket: the Quake handshake hasn't completed over the dead WT path (no
++//server session exists yet), so the engine's challenge resends just continue
++//over WS transparently. Returns false if no fallback is possible.
++static qboolean FTENET_Trunk_FallbackToWS(ftenet_trunk_connection_t *t)
++{
++	int datasocket;
++	if (!t->wsfallbackurl[0])
++		return false;	//already fell back, or none configured
++	emscriptenfte_trunk_wt_close();
++	datasocket = emscriptenfte_ws_connect(t->wsfallbackurl, "binary");
++	if (datasocket == INVALID_SOCKET)
++		return false;
++	t->datasock = datasocket;
++	t->useWT = false;
++	t->wtdeadline = 0;
++	t->wsfallbackurl[0] = 0;	//don't fall back twice
++	Con_Printf("WebTransport unavailable; falling back to WebSocket\n");
++	emscriptenfte_nqsettransport("WebSocket");
++	return true;
++}
 +static qboolean FTENET_Trunk_GetPacket(ftenet_generic_connection_t *gcon)
 +{
 +	ftenet_trunk_connection_t *t = (void*)gcon;
@@ -154,13 +178,25 @@ index 3af47a0..c4ef9ee 100644
 +	{
 +		if (t->useWT)
 +		{
++			if (!emscriptenfte_trunk_wt_ready())
++			{	//still handshaking - wait, fall back, or give up
++				if (emscriptenfte_trunk_wt_closed() ||
++					(t->wtdeadline && Sys_DoubleTime() > t->wtdeadline))
++				{
++					if (FTENET_Trunk_FallbackToWS(t))
++						continue;	//re-loop, now reading from WebSocket
++					t->failed = true;
++				}
++				net_message.cursize = 0;
++				return false;	//nothing to read until the session is up
++			}
 +			n = emscriptenfte_trunk_wt_recv((int)(uintptr_t)t->rxframe, sizeof(t->rxframe));
 +			if (n < 0)
 +				continue;	//oversized datagram - dropped, keep draining
 +			if (n == 0)
 +			{
 +				if (emscriptenfte_trunk_wt_closed())
-+					t->failed = true;
++					t->failed = true;	//mid-session drop
 +				net_message.cursize = 0;
 +				return false;	//queue drained for this frame
 +			}
@@ -228,26 +264,30 @@ index 3af47a0..c4ef9ee 100644
 +	newcon = Z_Malloc(sizeof(*newcon));
 +	newcon->datasock = INVALID_SOCKET;
 +
++	//websocketurl holds "trunk://host/connect" or "trunks://host/connect"; map to ws(s)://
++	//once - used as the primary transport or as the WebTransport fallback.
++	char wsurl[sizeof(adr.address.websocketurl)+8];
++	if (!strncmp(u, "trunks://", 9))
++		Q_snprintfz(wsurl, sizeof(wsurl), "wss://%s", u+9);
++	else if (!strncmp(u, "trunk://", 8))
++		Q_snprintfz(wsurl, sizeof(wsurl), "ws://%s", u+8);
++	else
++		Q_strncpyz(wsurl, u, sizeof(wsurl));
++
 +	// Prefer WebTransport (unreliable QUIC datagrams, like NexQuake) when the
 +	// page advertises a WT url (Module.nqTransportConfig.webtransport) and the
-+	// browser supports it; otherwise fall back to WebSocket on the trunk url.
++	// browser supports it; otherwise use WebSocket on the trunk url. When WT is
++	// chosen, arm a fallback so a blocked/refused QUIC path quietly degrades to
++	// WS rather than failing the connect (see FTENET_Trunk_FallbackToWS).
 +	if (emscriptenfte_trunk_wt_supported() && emscriptenfte_trunk_wt_start() == 0)
 +	{
 +		newcon->useWT = true;
++		Q_strncpyz(newcon->wsfallbackurl, wsurl, sizeof(newcon->wsfallbackurl));
++		newcon->wtdeadline = Sys_DoubleTime() + 2.5;	//swap to WS if not ready by then
 +	}
 +	else
 +	{
-+		char url[sizeof(adr.address.websocketurl)+8];
-+		int datasocket;
-+		//websocketurl holds "trunk://host/connect" or "trunks://host/connect"; map to ws(s)://
-+		if (!strncmp(u, "trunks://", 9))
-+			Q_snprintfz(url, sizeof(url), "wss://%s", u+9);
-+		else if (!strncmp(u, "trunk://", 8))
-+			Q_snprintfz(url, sizeof(url), "ws://%s", u+8);
-+		else
-+			Q_strncpyz(url, u, sizeof(url));
-+
-+		datasocket = emscriptenfte_ws_connect(url, "binary");	//Nexus advertises the "binary" subprotocol
++		int datasocket = emscriptenfte_ws_connect(wsurl, "binary");	//Nexus advertises the "binary" subprotocol
 +		if (datasocket == INVALID_SOCKET)
 +		{
 +			Con_Printf("Unable to create trunk connection\n");
@@ -279,7 +319,7 @@ index 3af47a0..c4ef9ee 100644
  static ftenet_generic_connection_t *FTENET_WebRTC_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo)
  {
  	qboolean isserver = col->islisten;
-@@ -9665,6 +9845,7 @@ qboolean NET_EnsureRoute(ftenet_connections_t *collection, char *routename, cons
+@@ -9665,6 +9885,7 @@ qboolean NET_EnsureRoute(ftenet_connections_t *collection, char *routename, cons
  		return false;
  #endif
  

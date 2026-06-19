@@ -159,7 +159,15 @@ func (app *nexusApp) handleServersTxt(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 
-	connectURL := "trunk://" + r.Host + "/connect"
+	// Advertise the secure scheme when the page is served over TLS so the FTE
+	// client maps it to wss:// (a plain ws:// handshake against the TLS port is
+	// rejected). r.TLS is set when Nexus terminates TLS itself; the forwarded
+	// header covers a TLS-terminating proxy in front.
+	scheme := "trunk"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "trunks"
+	}
+	connectURL := scheme + "://" + r.Host + "/connect"
 	info, ok := orch.ProbeServerInfostring(app.cfg.gameServerAddr, time.Second)
 	if !ok {
 		// Keep the server listed (and joinable) even if the status probe blips.
