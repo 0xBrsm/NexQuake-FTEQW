@@ -48,8 +48,21 @@
 (function () {
   var cfg = window.WEBQUAKE || {};
   var manifestUrl = cfg.manifestUrl || '/index.fmf';
-  var gamedir     = cfg.gamedir     || 'id1';
+  // Game is chosen per deployment by the entrypoint (gameconfig.js -> NQ_GAMEDIR).
+  var gamedir     = window.NQ_GAMEDIR || cfg.gamedir || 'id1';
   var connectHost = window.location.host;
+
+  // Transport config, mirroring NexQuake's Module.nqTransportConfig: prefer
+  // WebTransport (QUIC datagrams) on HTTPS, pinning the self-signed cert by hash
+  // (wtconfig.js -> NQWT_HASHES); else the trunk WebSocket path is used. Append
+  // ?transport=ws to force WebSocket.
+  var fteForceWS = /(?:^|[?&])transport=ws(?:&|$)/.test(window.location.search);
+  var fteTransportConfig = {};
+  if (!fteForceWS && window.location.protocol === 'https:' && typeof WebTransport === 'function') {
+    fteTransportConfig.webtransport = { url: 'https://' + connectHost + '/connect' };
+    if (window.NQWT_HASHES && window.NQWT_HASHES.length)
+      fteTransportConfig.webtransport.serverCertificateHashes = window.NQWT_HASHES;
+  }
 
   // ─── 2. Build the masters.txt virtual file ──────────────────────────────
   //
@@ -311,6 +324,9 @@
     noInitialRun: true,
 
     canvas: canvasElement,
+
+    // Trunk transport selection (WebTransport/WebSocket) read by the NP_TRUNK driver.
+    nqTransportConfig: fteTransportConfig,
 
     // FTE argument vector: mirrors web/index.html exactly.
     arguments: [

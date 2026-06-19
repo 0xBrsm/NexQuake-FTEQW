@@ -78,7 +78,11 @@ COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.js      /app/client
 COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.wasm    /app/client/ftewebgl.wasm
 COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.js.gz   /app/client/ftewebgl.js.gz
 COPY --from=web-builder /build/fteqw/engine/release/ftewebgl.wasm.gz /app/client/ftewebgl.wasm.gz
-COPY client/index.html /app/client/index.html
+# Assemble the NexQuake shell page (loader/PWA/overlay/touch/rcon) around the FTE
+# client: concatenate shell/*.js -> nq-shell.js and template shell.html -> index.html.
+COPY client/shell /tmp/shell
+COPY client/build-shell.sh /tmp/build-shell.sh
+RUN bash /tmp/build-shell.sh /tmp/shell /app/client && rm -rf /tmp/shell /tmp/build-shell.sh
 
 # Orchestration config: servers.ini (launch plan) + game.json (asset catalog).
 COPY etc/servers.ini /app/game/servers.ini
