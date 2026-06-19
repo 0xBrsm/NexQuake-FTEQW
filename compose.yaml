@@ -6,6 +6,10 @@ services:
       network: host
     restart: unless-stopped
     environment:
+      # Which game this deployment serves: id1 (Q1), baseq2 (Q2), baseq3 (Q3).
+      # Override per the goal "one client and one server play Q1, Q2, or Q3":
+      #   GAMEDIR=baseq3 docker compose up
+      GAMEDIR: ${GAMEDIR:-id1}
       # Enables HTTPS + WebTransport. The entrypoint mints a self-signed cert and
       # pins it to the client by hash, so local play gets unreliable QUIC
       # datagrams with no public CA. Comment out for plain HTTP + WebSocket.

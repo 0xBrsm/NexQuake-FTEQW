@@ -36,11 +36,30 @@ else
   printf 'window.NQWT_HASHES=[];\n' > "$CLIENT_DIR/wtconfig.js"
 fi
 
+# One configurable game per deployment (the "play Q1, Q2, or Q3" switch). GAMEDIR
+# selects the engine game profile and a default starting map; SV_MAP overrides.
+case "$GAMEDIR" in
+  id1)    FTE_GAME="quake";  DEF_MAP="start" ;;
+  baseq2) FTE_GAME="quake2"; DEF_MAP="base1" ;;
+  baseq3) FTE_GAME="quake3"; DEF_MAP="q3dm1" ;;
+  *)      FTE_GAME="quake";  DEF_MAP="start" ;;
+esac
+MAP="${SV_MAP:-$DEF_MAP}"
+
+# Launch plan: a single fteqw-sv for the selected game on the trunk's UDP port
+# (27500, distinct from Nexus's 26000 HTTP/3 port). Regenerated each start so the
+# game/map track GAMEDIR.
+cat > "$GAME_DIR/servers.ini" <<INI
+# Generated from GAMEDIR=$GAMEDIR. Trunk delivers plain UDP to fteqw-sv.
+fteqw-sv -dedicated -basedir $CLIENT_DIR/gamedata -game $GAMEDIR +set sv_port 27500 +set sv_public 0 +set hostname "NexQuake-FTE ($GAMEDIR)" +map $MAP
+INI
+
+# FTE package manifest for the client (game profile + the paks/pk3s present).
 out="$CLIENT_DIR/index.fmf"
 {
   echo "FTEMANIFEST 1"
-  echo "GAME quake"
-  echo "NAME \"NexQuake-FTE\""
+  echo "GAME $FTE_GAME"
+  echo "NAME \"NexQuake-FTE ($GAMEDIR)\""
   echo "GAMEDIR $GAMEDIR"
 } > "$out"
 
@@ -55,6 +74,10 @@ fi
 # Emscripten falls back to <page>.fmf when -manifest is absent; keep them in sync.
 cp "$out" "$CLIENT_DIR/index.html.fmf"
 
+# Tell the client which game to launch (read by index.html).
+printf 'window.NQ_GAMEDIR=%s;\n' "\"$GAMEDIR\"" > "$CLIENT_DIR/gameconfig.js"
+
+echo "Game: $GAMEDIR (FTE profile $FTE_GAME, map $MAP)"
 echo "Generated manifest:"; cat "$out"
 
 exec /app/bin/nexus

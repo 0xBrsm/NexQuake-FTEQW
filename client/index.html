@@ -21,6 +21,9 @@
          window.NQWT_HASHES to the SHA-256(s) of the server's self-signed cert so
          the WT client can pin it. Absent/empty in plain-HTTP (WebSocket) mode. -->
     <script src="/wtconfig.js"></script>
+    <!-- Generated at container start: window.NQ_GAMEDIR = the deployment's game
+         (id1 | baseq2 | baseq3), so the client launches the matching game. -->
+    <script src="/gameconfig.js"></script>
     <script>
       // Boot the FTE client and auto-connect to the dedicated server through the
       // Nexus trunk relay. Gameplay rides the 2-byte-port-prefixed trunk framing
@@ -30,6 +33,7 @@
       (function () {
         var host = window.location.host;
         var connectUrl = "trunk://" + host + "/connect";
+        var gamedir = window.NQ_GAMEDIR || "id1";
 
         // Lock the in-game server browser to Nexus-managed games only: inject a
         // masters.txt so FTE queries our HTTP server list (masterhttp) instead of
@@ -54,7 +58,7 @@
           canvas: document.getElementById("canvas"),
           arguments: [
             "-manifest", "/index.fmf",
-            "-game", "id1",
+            "-game", gamedir,
             "+set", "cl_web_connect_host", host,
             "+connect", connectUrl
           ],
