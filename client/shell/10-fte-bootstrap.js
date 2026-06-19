@@ -64,6 +64,28 @@
       fteTransportConfig.webtransport.serverCertificateHashes = window.NQWT_HASHES;
   }
 
+  // ─── Canvas sizing ──────────────────────────────────────────────────────
+  // The shell's letterbox CSS (shell-ui.css) sizes the canvas from --nq-ar /
+  // --nq-canvas-* vars that the *original* NexQuake engine set each frame. FTE
+  // doesn't, so that formula is invalid and the canvas stays at its 300x150
+  // default. FTE renders responsively to the canvas size (the bare page filled
+  // fine with width:100%), so make the canvas simply fill the viewport and nudge
+  // FTE to re-read it. Injected before the engine loads so it reads the right
+  // size at init.
+  (function injectCanvasFill() {
+    var st = document.createElement('style');
+    st.textContent =
+      'html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#000}' +
+      'canvas#canvas{position:fixed;top:0;left:0;width:100vw!important;height:100vh!important;' +
+      'max-width:none!important;max-height:none!important;display:block}';
+    document.head.appendChild(st);
+  })();
+  function nqFitCanvas() {
+    // FTE resizes its renderer to the canvas on window 'resize'; fire one so it
+    // adopts the full size after the loader hands off.
+    try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+  }
+
   // ─── 2. Build the masters.txt virtual file ──────────────────────────────
   //
   // FTE's in-game server browser reads a file named "masters.txt".
@@ -209,6 +231,8 @@
         canvasElement.style.display = 'block';
         canvasElement.focus();
       }
+      nqFitCanvas();
+      setTimeout(nqFitCanvas, 200);  // again after layout settles
 
       // Sync CD/overlay state now that the game has started.
       if (Module.nqOverlayCtx) {
