@@ -1,3 +1,15 @@
+diff --git a/engine/Makefile b/engine/Makefile
+index ab4281d..7d0312e 100644
+--- a/engine/Makefile
++++ b/engine/Makefile
+@@ -1895,6 +1895,7 @@ ifeq ($(FTE_TARGET),web)
+ 	EMCC_LDFLAGS+= -s ALLOW_MEMORY_GROWTH=1			#reduce crashes...
+ 	EMCC_LDFLAGS+= -s MAX_WEBGL_VERSION=2			#make use of what we can.
+ 	EMCC_LDFLAGS+= -s TOTAL_STACK=5MB			#big!
++	EMCC_LDFLAGS+= -s EXPORTED_RUNTIME_METHODS=ccall,callMain	#NexQuake shell uses Module.ccall(NQWasm_*) + Module.callMain([]) for the ENTER gate.
+    	EMCC_LDFLAGS+=-s ERROR_ON_UNDEFINED_SYMBOLS=1	#fairly obvious. no runtime errors please.
+ 	RELEASE_CFLAGS=-DOMIT_QCC -DGL_STATIC $(EMCC_CFLAGS)
+ 	DEBUG_CFLAGS=-gsource-map -DOMIT_QCC -DGL_STATIC $(EMCC_CFLAGS)
 diff --git a/engine/client/cl_main.c b/engine/client/cl_main.c
 index da3ee80..39bf5a8 100644
 --- a/engine/client/cl_main.c
@@ -35,7 +47,7 @@ index c604e96..05d1035 100644
  	NP_INVALID
  } netproto_t;
 diff --git a/engine/common/net_wins.c b/engine/common/net_wins.c
-index 3af47a0..dccea63 100644
+index 3af47a0..c4ef9ee 100644
 --- a/engine/common/net_wins.c
 +++ b/engine/common/net_wins.c
 @@ -845,6 +845,7 @@ char	*NET_AdrToString (char *s, int len, netadr_t *a)
@@ -97,7 +109,7 @@ index 3af47a0..dccea63 100644
  #endif
  #ifdef HAVE_NATPMP
  		if (adr->prot == NP_NATPMP && adr->type == NA_IP)		establish = FTENET_NATPMP_EstablishConnection; else
-@@ -9314,6 +9331,166 @@ static ftenet_generic_connection_t *FTENET_WebSocket_EstablishConnection(ftenet_
+@@ -9314,6 +9331,169 @@ static ftenet_generic_connection_t *FTENET_WebSocket_EstablishConnection(ftenet_
  	return NULL;
  }
  
@@ -256,6 +268,9 @@ index 3af47a0..dccea63 100644
 +	newcon->generic.thesocket = INVALID_SOCKET;
 +	newcon->serverport = TRUNK_DEFAULT_SVPORT;	//fteqw-sv UDP port behind Nexus (v1: fixed)
 +
++	//Light up the NexQuake shell's transport indicator with the chosen transport.
++	emscriptenfte_nqsettransport(newcon->useWT ? "WebTransport" : "WebSocket");
++
 +	adr.port = 0;
 +	newcon->remoteadr = adr;
 +	return &newcon->generic;
@@ -264,7 +279,7 @@ index 3af47a0..dccea63 100644
  static ftenet_generic_connection_t *FTENET_WebRTC_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo)
  {
  	qboolean isserver = col->islisten;
-@@ -9665,6 +9842,7 @@ qboolean NET_EnsureRoute(ftenet_connections_t *collection, char *routename, cons
+@@ -9665,6 +9845,7 @@ qboolean NET_EnsureRoute(ftenet_connections_t *collection, char *routename, cons
  		return false;
  #endif
  
@@ -273,10 +288,10 @@ index 3af47a0..dccea63 100644
  	case NP_WSS:
  	case NP_TLS:
 diff --git a/engine/web/ftejslib.h b/engine/web/ftejslib.h
-index 6ec15e7..f29e85a 100644
+index 6ec15e7..fc40146 100644
 --- a/engine/web/ftejslib.h
 +++ b/engine/web/ftejslib.h
-@@ -26,6 +26,15 @@ int emscriptenfte_ws_cansend(int sockid, int extra, int maxpending);	//returns f
+@@ -26,6 +26,16 @@ int emscriptenfte_ws_cansend(int sockid, int extra, int maxpending);	//returns f
  int emscriptenfte_ws_send(int sockid, const void *data, int len);		//send data to the peer. queues data. never dropped.
  int emscriptenfte_ws_recv(int sockid, void *data, int len);				//receive data from the peer.
  
@@ -288,15 +303,16 @@ index 6ec15e7..f29e85a 100644
 +int  emscriptenfte_trunk_wt_send(int ptr, int len);			//len sent / 0 not-ready (clogged) / -1 dead
 +int  emscriptenfte_trunk_wt_recv(int ptr, int max_len);		//one datagram; >0 len / 0 empty / -1 oversized
 +void emscriptenfte_trunk_wt_close(void);
++void emscriptenfte_nqsettransport(const char *name);		//update the NexQuake shell transport indicator
 +
  int emscriptenfte_rtc_create(int clientside, void *ctxp, int ctxi, void(*cb)(void *ctxp, int ctxi, int type, const char *data), const char *json_config);					//open a webrtc connection to a specific broker url
  void emscriptenfte_rtc_offer(int sock, const char *offer, const char *sdptype);//sets the remote sdp.
  int emscriptenfte_rtc_candidate(int sock, const char *offer);				//adds a remote candidate.
 diff --git a/engine/web/ftejslib.js b/engine/web/ftejslib.js
-index bc04299..55401ec 100644
+index bc04299..5c7c50e 100644
 --- a/engine/web/ftejslib.js
 +++ b/engine/web/ftejslib.js
-@@ -1299,6 +1299,99 @@ mergeInto(LibraryManager.library,
+@@ -1299,6 +1299,107 @@ mergeInto(LibraryManager.library,
  		return 0;
  	},
  
@@ -393,6 +409,66 @@ index bc04299..55401ec 100644
 +		s.session = null; s.writer = null; s.recvQueue = []; s.recvHead = 0; s.sendBuf = null;
 +	},
 +
++	// Update the NexQuake shell's lower-right transport indicator on connect.
++	emscriptenfte_nqsettransport : function(namep)
++	{
++		var n = UTF8ToString(namep);
++		if (typeof Module !== 'undefined' && Module && typeof Module.nqSetTransport === 'function')
++			Module.nqSetTransport(n);
++	},
++
  	emscriptenfte_rtc_create__deps: ['emscriptenfte_handle_alloc'],
  	emscriptenfte_rtc_create : function(clientside, ctxp, ctxi, callback, pcconfig)
  	{
+diff --git a/engine/web/sys_web.c b/engine/web/sys_web.c
+index 14aff73..00d9fbf 100644
+--- a/engine/web/sys_web.c
++++ b/engine/web/sys_web.c
+@@ -601,3 +601,47 @@ void Sys_Sleep (double seconds)
+ 	//SDL_Delay(seconds * 1000);
+ }
+ 
++//==========================================================================
++// NexQuake shell bridge.
++// The NexQuake browser shell (client/shell/00-core.js) drives the engine
++// through a small NQWasm_* contract called via Module.ccall, so the shell UX
++// is identical to original NexQuake. Provide those entry points here, wired to
++// FTE internals. (Exported via EXPORTED_RUNTIME_METHODS=ccall + KEEPALIVE.)
++//==========================================================================
++EMSCRIPTEN_KEEPALIVE void NQWasm_ExecCommand(const char *cmd)
++{	//console command from the shell overlay (cd/cfg exec/menu toggle/rcon/...)
++	if (cmd && *cmd)
++	{
++		Cbuf_AddText(cmd, RESTRICT_LOCAL);
++		Cbuf_AddText("\n", RESTRICT_LOCAL);
++	}
++}
++EMSCRIPTEN_KEEPALIVE void NQWasm_StartMainLoop(void)
++{	//FTE drives its own main loop; nothing to do here.
++}
++EMSCRIPTEN_KEEPALIVE void NQWasm_PrefetchKnownSounds(void)
++{	//FTE manages its own sound precaching.
++}
++EMSCRIPTEN_KEEPALIVE const char *NQWasm_GetKeyBinding(int key)
++{	//touch HUD reads the command bound to a key for its button labels.
++	const char *b = Key_GetBinding(key, 0, 0);
++	return b ? b : "";
++}
++EMSCRIPTEN_KEEPALIVE void NQWasm_TextInputKey(int key)
++{	//mobile text-entry widget injects a keypress.
++	Key_Event(0, key, 0, true);
++	Key_Event(0, key, 0, false);
++}
++EMSCRIPTEN_KEEPALIVE const char *NQWasm_GetTextInputValue(void)
++{	//FTE owns its edit line; the shell text widget is input-only here.
++	return "";
++}
++EMSCRIPTEN_KEEPALIVE int NQWasm_GetVideoWidth(void)
++{
++	return vid.width;
++}
++EMSCRIPTEN_KEEPALIVE int NQWasm_GetConnectedServerListenPort(void)
++{	//trunk has no per-server UDP listen port; the join-code widget stays empty.
++	return 0;
++}
++
