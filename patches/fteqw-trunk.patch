@@ -35,7 +35,7 @@ index c604e96..05d1035 100644
  	NP_INVALID
  } netproto_t;
 diff --git a/engine/common/net_wins.c b/engine/common/net_wins.c
-index 3af47a0..29bbc54 100644
+index 3af47a0..dccea63 100644
 --- a/engine/common/net_wins.c
 +++ b/engine/common/net_wins.c
 @@ -845,6 +845,7 @@ char	*NET_AdrToString (char *s, int len, netadr_t *a)
@@ -97,7 +97,7 @@ index 3af47a0..29bbc54 100644
  #endif
  #ifdef HAVE_NATPMP
  		if (adr->prot == NP_NATPMP && adr->type == NA_IP)		establish = FTENET_NATPMP_EstablishConnection; else
-@@ -9314,6 +9331,131 @@ static ftenet_generic_connection_t *FTENET_WebSocket_EstablishConnection(ftenet_
+@@ -9314,6 +9331,166 @@ static ftenet_generic_connection_t *FTENET_WebSocket_EstablishConnection(ftenet_
  	return NULL;
  }
  
@@ -113,12 +113,13 @@ index 3af47a0..29bbc54 100644
 +//a WebTransport variant can later swap that out behind this same C path.
 +#define TRUNK_PORT_HDR		2
 +#define TRUNK_CTL_PORT		0
-+#define TRUNK_DEFAULT_SVPORT	26000
++#define TRUNK_DEFAULT_SVPORT	27500	//fteqw-sv UDP port behind Nexus (distinct from Nexus's 26000 HTTP/3 port)
 +typedef struct
 +{
 +	ftenet_generic_connection_t generic;
 +	netadr_t	remoteadr;
-+	int			datasock;
++	int			datasock;	//WebSocket handle (INVALID_SOCKET when useWT)
++	qboolean	useWT;		//true: WebTransport datagrams (Module.nqWt); false: WebSocket
 +	qboolean	failed;
 +	unsigned short serverport;	//host-order UDP port stamped into outbound frame prefixes
 +	qbyte		rxframe[MAX_UDP_PACKET];
@@ -128,7 +129,9 @@ index 3af47a0..29bbc54 100644
 +static void FTENET_Trunk_Close(ftenet_generic_connection_t *gcon)
 +{
 +	ftenet_trunk_connection_t *t = (void*)gcon;
-+	if (t->datasock != INVALID_SOCKET)
++	if (t->useWT)
++		emscriptenfte_trunk_wt_close();
++	else if (t->datasock != INVALID_SOCKET)
 +		emscriptenfte_ws_close(t->datasock);
 +}
 +static qboolean FTENET_Trunk_GetPacket(ftenet_generic_connection_t *gcon)
@@ -137,17 +140,33 @@ index 3af47a0..29bbc54 100644
 +	int n, srcport;
 +	for (;;)
 +	{
-+		n = emscriptenfte_ws_recv(t->datasock, t->rxframe, sizeof(t->rxframe));
-+		if (n < 0)
++		if (t->useWT)
 +		{
-+			t->failed = true;
-+			net_message.cursize = 0;
-+			return false;
++			n = emscriptenfte_trunk_wt_recv((int)(uintptr_t)t->rxframe, sizeof(t->rxframe));
++			if (n < 0)
++				continue;	//oversized datagram - dropped, keep draining
++			if (n == 0)
++			{
++				if (emscriptenfte_trunk_wt_closed())
++					t->failed = true;
++				net_message.cursize = 0;
++				return false;	//queue drained for this frame
++			}
 +		}
-+		if (n == 0)
++		else
 +		{
-+			net_message.cursize = 0;
-+			return false;	//queue drained for this frame
++			n = emscriptenfte_ws_recv(t->datasock, t->rxframe, sizeof(t->rxframe));
++			if (n < 0)
++			{
++				t->failed = true;
++				net_message.cursize = 0;
++				return false;
++			}
++			if (n == 0)
++			{
++				net_message.cursize = 0;
++				return false;	//queue drained for this frame
++			}
 +		}
 +		if (n < TRUNK_PORT_HDR)
 +			continue;	//runt frame, ignore
@@ -173,7 +192,10 @@ index 3af47a0..29bbc54 100644
 +	t->txframe[0] = (t->serverport>>8)&0xff;
 +	t->txframe[1] = t->serverport&0xff;
 +	memcpy(t->txframe+TRUNK_PORT_HDR, data, length);
-+	r = emscriptenfte_ws_send(t->datasock, t->txframe, length+TRUNK_PORT_HDR);
++	if (t->useWT)
++		r = emscriptenfte_trunk_wt_send((int)(uintptr_t)t->txframe, length+TRUNK_PORT_HDR);
++	else
++		r = emscriptenfte_ws_send(t->datasock, t->txframe, length+TRUNK_PORT_HDR);
 +	if (r < 0)
 +		return NETERR_DISCONNECTED;
 +	if (r == 0 && length)
@@ -183,8 +205,6 @@ index 3af47a0..29bbc54 100644
 +static ftenet_generic_connection_t *FTENET_Trunk_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo)
 +{
 +	ftenet_trunk_connection_t *newcon;
-+	int datasocket;
-+	char url[sizeof(adr.address.websocketurl)+8];
 +	const char *u = adr.address.websocketurl;
 +
 +	if (col->islisten)
@@ -193,22 +213,38 @@ index 3af47a0..29bbc54 100644
 +		return NULL;
 +	}
 +
-+	//websocketurl holds "trunk://host/connect" or "trunks://host/connect"; map to ws(s)://
-+	if (!strncmp(u, "trunks://", 9))
-+		Q_snprintfz(url, sizeof(url), "wss://%s", u+9);
-+	else if (!strncmp(u, "trunk://", 8))
-+		Q_snprintfz(url, sizeof(url), "ws://%s", u+8);
-+	else
-+		Q_strncpyz(url, u, sizeof(url));
++	newcon = Z_Malloc(sizeof(*newcon));
++	newcon->datasock = INVALID_SOCKET;
 +
-+	datasocket = emscriptenfte_ws_connect(url, "binary");	//Nexus advertises the "binary" subprotocol
-+	if (datasocket == INVALID_SOCKET)
++	// Prefer WebTransport (unreliable QUIC datagrams, like NexQuake) when the
++	// page advertises a WT url (Module.nqTransportConfig.webtransport) and the
++	// browser supports it; otherwise fall back to WebSocket on the trunk url.
++	if (emscriptenfte_trunk_wt_supported() && emscriptenfte_trunk_wt_start() == 0)
 +	{
-+		Con_Printf("Unable to create trunk connection\n");
-+		return NULL;
++		newcon->useWT = true;
++	}
++	else
++	{
++		char url[sizeof(adr.address.websocketurl)+8];
++		int datasocket;
++		//websocketurl holds "trunk://host/connect" or "trunks://host/connect"; map to ws(s)://
++		if (!strncmp(u, "trunks://", 9))
++			Q_snprintfz(url, sizeof(url), "wss://%s", u+9);
++		else if (!strncmp(u, "trunk://", 8))
++			Q_snprintfz(url, sizeof(url), "ws://%s", u+8);
++		else
++			Q_strncpyz(url, u, sizeof(url));
++
++		datasocket = emscriptenfte_ws_connect(url, "binary");	//Nexus advertises the "binary" subprotocol
++		if (datasocket == INVALID_SOCKET)
++		{
++			Con_Printf("Unable to create trunk connection\n");
++			Z_Free(newcon);
++			return NULL;
++		}
++		newcon->datasock = datasocket;
 +	}
 +
-+	newcon = Z_Malloc(sizeof(*newcon));
 +	newcon->generic.GetPacket = FTENET_Trunk_GetPacket;
 +	newcon->generic.SendPacket = FTENET_Trunk_SendPacket;
 +	newcon->generic.Close = FTENET_Trunk_Close;
@@ -218,7 +254,6 @@ index 3af47a0..29bbc54 100644
 +	newcon->generic.addrtype[0] = NA_WEBSOCKET;
 +	newcon->generic.addrtype[1] = NA_INVALID;
 +	newcon->generic.thesocket = INVALID_SOCKET;
-+	newcon->datasock = datasocket;
 +	newcon->serverport = TRUNK_DEFAULT_SVPORT;	//fteqw-sv UDP port behind Nexus (v1: fixed)
 +
 +	adr.port = 0;
@@ -229,7 +264,7 @@ index 3af47a0..29bbc54 100644
  static ftenet_generic_connection_t *FTENET_WebRTC_EstablishConnection(ftenet_connections_t *col, const char *address, netadr_t adr, const struct dtlspeercred_s *peerinfo)
  {
  	qboolean isserver = col->islisten;
-@@ -9665,6 +9807,7 @@ qboolean NET_EnsureRoute(ftenet_connections_t *collection, char *routename, cons
+@@ -9665,6 +9842,7 @@ qboolean NET_EnsureRoute(ftenet_connections_t *collection, char *routename, cons
  		return false;
  #endif
  
@@ -237,3 +272,127 @@ index 3af47a0..29bbc54 100644
  	case NP_WS:
  	case NP_WSS:
  	case NP_TLS:
+diff --git a/engine/web/ftejslib.h b/engine/web/ftejslib.h
+index 6ec15e7..f29e85a 100644
+--- a/engine/web/ftejslib.h
++++ b/engine/web/ftejslib.h
+@@ -26,6 +26,15 @@ int emscriptenfte_ws_cansend(int sockid, int extra, int maxpending);	//returns f
+ int emscriptenfte_ws_send(int sockid, const void *data, int len);		//send data to the peer. queues data. never dropped.
+ int emscriptenfte_ws_recv(int sockid, void *data, int len);				//receive data from the peer.
+ 
++//Nexus trunk WebTransport datagram transport (single Module.nqWt session; config from Module.nqTransportConfig.webtransport).
++int  emscriptenfte_trunk_wt_supported(void);				//1 if a WT url is advertised and WebTransport is available
++int  emscriptenfte_trunk_wt_start(void);					//open the session (non-blocking); 0 ok / -1 unavailable
++int  emscriptenfte_trunk_wt_ready(void);					//1 once the session handshake completed
++int  emscriptenfte_trunk_wt_closed(void);					//1 if the session is closed/failed
++int  emscriptenfte_trunk_wt_send(int ptr, int len);			//len sent / 0 not-ready (clogged) / -1 dead
++int  emscriptenfte_trunk_wt_recv(int ptr, int max_len);		//one datagram; >0 len / 0 empty / -1 oversized
++void emscriptenfte_trunk_wt_close(void);
++
+ int emscriptenfte_rtc_create(int clientside, void *ctxp, int ctxi, void(*cb)(void *ctxp, int ctxi, int type, const char *data), const char *json_config);					//open a webrtc connection to a specific broker url
+ void emscriptenfte_rtc_offer(int sock, const char *offer, const char *sdptype);//sets the remote sdp.
+ int emscriptenfte_rtc_candidate(int sock, const char *offer);				//adds a remote candidate.
+diff --git a/engine/web/ftejslib.js b/engine/web/ftejslib.js
+index bc04299..55401ec 100644
+--- a/engine/web/ftejslib.js
++++ b/engine/web/ftejslib.js
+@@ -1299,6 +1299,99 @@ mergeInto(LibraryManager.library,
+ 		return 0;
+ 	},
+ 
++	// --- Nexus trunk WebTransport datagram transport -----------------------
++	// Mirrors NexQuake's net_wt.c: a single Module.nqWt session carrying the same
++	// 2-byte-port-prefixed trunk frames as the WS path, but over unreliable QUIC
++	// datagrams. Config (url + optional serverCertificateHashes for self-signed
++	// pinning) comes from Module.nqTransportConfig.webtransport, exactly like the
++	// NexQuake client.
++	emscriptenfte_trunk_wt_supported : function()
++	{
++		var cfg = (Module.nqTransportConfig && Module.nqTransportConfig.webtransport) || null;
++		return (cfg && cfg.url && typeof WebTransport === 'function') ? 1 : 0;
++	},
++	emscriptenfte_trunk_wt_start : function()
++	{
++		var cfg = (Module.nqTransportConfig && Module.nqTransportConfig.webtransport) || null;
++		if (!cfg || !cfg.url || typeof WebTransport !== 'function') return -1;
++		if (Module.nqWt && Module.nqWt.session) return 0;
++		var s = Module.nqWt = {session:null, writer:null, recvQueue:[], recvHead:0, recvCap:512,
++			sendBuf:null, opened:false, everOpened:false, closed:false, errDetail:""};
++		var opts;
++		if (cfg.serverCertificateHashes && cfg.serverCertificateHashes.length) {
++			try {
++				opts = {serverCertificateHashes: cfg.serverCertificateHashes.map(function(h){
++					var bin = atob(h), arr = new Uint8Array(bin.length);
++					for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
++					return {algorithm:'sha-256', value: arr.buffer};
++				})};
++			} catch(e) { opts = undefined; }
++		}
++		try {
++			s.session = opts ? new WebTransport(cfg.url, opts) : new WebTransport(cfg.url);
++		} catch(e) { s.errDetail = String((e && e.message) || e); s.closed = true; return -1; }
++		s.session.ready.then(function(){
++			s.writer = s.session.datagrams.writable.getWriter();
++			s.opened = true; s.everOpened = true;
++			(async function(){
++				var reader = s.session.datagrams.readable.getReader();
++				try { for(;;){ var r = await reader.read(); if (r.done) break;
++					if (s.recvQueue.length - s.recvHead >= s.recvCap) s.recvQueue[s.recvHead++] = null;
++					s.recvQueue.push(new Uint8Array(r.value)); } }
++				catch(e){ s.errDetail = String((e && e.message) || e); }
++				s.opened = false; s.closed = true;
++			})();
++		}).catch(function(e){ s.errDetail = String((e && e.message) || e); s.closed = true; });
++		s.session.closed.then(function(){ s.opened = false; s.closed = true; },
++			function(e){ s.opened = false; s.closed = true; if (!s.errDetail) s.errDetail = String((e && e.message) || e); });
++		return 0;
++	},
++	emscriptenfte_trunk_wt_ready  : function() { return (Module.nqWt && Module.nqWt.opened) ? 1 : 0; },
++	emscriptenfte_trunk_wt_closed : function() { return (!Module.nqWt || Module.nqWt.closed) ? 1 : 0; },
++	emscriptenfte_trunk_wt_send : function(ptr, len)
++	{
++		var s = Module.nqWt;
++		if (!s || !s.writer) return 0;   // not connected yet -> CLOGGED (caller retries)
++		if (s.closed) return -1;
++		try {
++			var dg = s.session && s.session.datagrams, max = dg && dg.maxDatagramSize;
++			if (typeof max === 'number' && max > 0 && len > max) return len; // oversized = UDP-style loss
++			if (!s.sendBuf || s.sendBuf.length < len) { var cap = 1024; while (cap < len) cap <<= 1; s.sendBuf = new Uint8Array(cap); }
++			s.sendBuf.set(HEAPU8.subarray(ptr, ptr + len));
++			s.writer.write(s.sendBuf.subarray(0, len)).catch(function(e){
++				if (e instanceof TypeError) return; // oversized; drop like loss
++				s.errDetail = String((e && e.message) || e);
++				if (s.session) { try { s.session.close(); } catch(_) {} }
++				s.opened = false; s.closed = true;
++			});
++			return len;
++		} catch(e) {
++			s.errDetail = String((e && e.message) || e);
++			if (s.session) { try { s.session.close(); } catch(_) {} }
++			s.opened = false; s.closed = true;
++			return -1;
++		}
++	},
++	emscriptenfte_trunk_wt_recv : function(ptr, max_len)
++	{
++		var s = Module.nqWt;
++		if (!s || s.recvHead >= s.recvQueue.length) return 0;
++		var msg = s.recvQueue[s.recvHead];
++		s.recvQueue[s.recvHead++] = null;
++		if (s.recvHead === s.recvQueue.length) { s.recvQueue.length = 0; s.recvHead = 0; }
++		if (msg.length > max_len) return -1; // oversized; caller keeps draining
++		HEAPU8.set(msg, ptr);
++		return msg.length;
++	},
++	emscriptenfte_trunk_wt_close : function()
++	{
++		var s = Module.nqWt;
++		if (!s) return;
++		if (s.session) { try { s.session.close(); } catch(e) {} }
++		s.opened = false; s.closed = true;
++		s.session = null; s.writer = null; s.recvQueue = []; s.recvHead = 0; s.sendBuf = null;
++	},
++
+ 	emscriptenfte_rtc_create__deps: ['emscriptenfte_handle_alloc'],
+ 	emscriptenfte_rtc_create : function(clientside, ctxp, ctxi, callback, pcconfig)
+ 	{

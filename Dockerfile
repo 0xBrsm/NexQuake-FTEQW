@@ -50,10 +50,10 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/nexus .
 
 FROM debian:${DEBIAN_VERSION}-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates zlib1g \
+    bash ca-certificates zlib1g openssl \
   && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /app/bin /app/client/gamedata /app/etc /app/game /app/logs /app/cd
+RUN mkdir -p /app/bin /app/client/gamedata /app/etc /app/game /app/logs /app/cd /app/cert
 
 # Server + relay binaries (on PATH via BIN_DIR; servers.ini calls bare "fteqw-sv").
 COPY --from=server-builder /build/fteqw/engine/release/fteqw-sv /app/bin/fteqw-sv
@@ -81,6 +81,7 @@ ENV HTTP_PORT=26000 \
     BIN_DIR=/app/bin \
     SERVER_DIR=/app/bin \
     CD_DIR=/app/cd \
+    GAME_SV_ADDR=127.0.0.1:27500 \
     GAMEDIR=id1
 
 WORKDIR /app

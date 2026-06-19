@@ -17,11 +17,16 @@
   <body>
     <div id="status">Loading…</div>
     <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <!-- Generated at container start when WebTransport is enabled: sets
+         window.NQWT_HASHES to the SHA-256(s) of the server's self-signed cert so
+         the WT client can pin it. Absent/empty in plain-HTTP (WebSocket) mode. -->
+    <script src="/wtconfig.js"></script>
     <script>
-      // First-light trunk smoke: boot the FTE client and auto-connect to the
-      // dedicated server through the Nexus trunk relay (ws -> /connect -> UDP).
-      // The 2-byte-port-prefixed datagram framing lives in the engine's NP_TRUNK
-      // driver; the page just hands it a trunk:// URL on this same origin.
+      // Boot the FTE client and auto-connect to the dedicated server through the
+      // Nexus trunk relay. Gameplay rides the 2-byte-port-prefixed trunk framing
+      // in the engine's NP_TRUNK driver: WebTransport (unreliable QUIC datagrams)
+      // when the page is HTTPS and the browser supports it, else WebSocket.
+      // Append ?transport=ws to force the WebSocket fallback.
       (function () {
         var host = window.location.host;
         var connectUrl = "trunk://" + host + "/connect";
@@ -32,7 +37,19 @@
         var serversUrl = window.location.origin + "/servers.txt";
         var mastersTxt = serversUrl + " masterhttp:nq Servers\n";
 
+        // Transport selection, mirroring NexQuake's Module.nqTransportConfig: a
+        // WebTransport url (same origin /connect) when HTTPS + WebTransport are
+        // available and not overridden, with the self-signed cert pinned by hash.
+        var forceWS = /(?:^|[?&])transport=ws(?:&|$)/.test(window.location.search);
+        var transportConfig = {};
+        if (!forceWS && window.location.protocol === "https:" && typeof WebTransport === "function") {
+          transportConfig.webtransport = { url: "https://" + host + "/connect" };
+          if (window.NQWT_HASHES && window.NQWT_HASHES.length)
+            transportConfig.webtransport.serverCertificateHashes = window.NQWT_HASHES;
+        }
+
         window.Module = {
+          nqTransportConfig: transportConfig,
           autostart: true,
           canvas: document.getElementById("canvas"),
           arguments: [

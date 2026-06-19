@@ -5,9 +5,15 @@ services:
       context: .
       network: host
     restart: unless-stopped
+    environment:
+      # Enables HTTPS + WebTransport. The entrypoint mints a self-signed cert and
+      # pins it to the client by hash, so local play gets unreliable QUIC
+      # datagrams with no public CA. Comment out for plain HTTP + WebSocket.
+      EXTERNAL_URL: https://localhost
     # Paks serve double duty: fteqw-sv reads them (-basedir /app/client/gamedata)
     # and the FTE client fetches them over HTTP (/gamedata/...) from the same dir.
     volumes:
       - ./gamedata:/app/client/gamedata
     ports:
-      - 26000:26000
+      - 26000:26000/tcp   # HTTPS page + WSS trunk
+      - 26000:26000/udp   # HTTP/3 (WebTransport) trunk
