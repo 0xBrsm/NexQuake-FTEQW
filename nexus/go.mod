@@ -21,7 +21,4 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 )
 
-require (
-	github.com/creack/pty v1.1.24
-	golang.org/x/net v0.43.0 // indirect
-)
+require golang.org/x/net v0.43.0 // indirect

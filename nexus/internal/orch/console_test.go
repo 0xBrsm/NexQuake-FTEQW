@@ -114,7 +114,7 @@ func TestParseSearchPathConsoleLine(t *testing.T) {
 }
 
 func TestSubscribeFiltered_AppliesFilter(t *testing.T) {
-	c := newServerConsole(nil)
+	c := newServerConsole(nil, nil)
 	lines, cancel := c.subscribeFiltered(8, func(line string) (string, bool) {
 		if strings.Contains(line, "drop") {
 			return "", false
@@ -175,7 +175,7 @@ func TestCaptureCommandBetweenSentinels_AppliesFilter(t *testing.T) {
 		_ = ptyWrite.Close()
 	})
 
-	c := newServerConsole(ptyWrite)
+	c := newServerConsole(nil, ptyWrite)
 	go func() {
 		buf := make([]byte, 256)
 		n, _ := ptyRead.Read(buf)
@@ -222,7 +222,7 @@ func TestServerConsoleRun_StripsSentinelLinesFromLog(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logFile.Close() })
 
-	c := newServerConsole(ptyRead)
+	c := newServerConsole(ptyRead, nil)
 	done := make(chan struct{})
 	go func() {
 		c.run(logFile, testFormatLogLine)
@@ -263,7 +263,7 @@ func TestServerConsoleRun_StripsSentinelLinesFromLog(t *testing.T) {
 }
 
 func TestServerConsoleTail_ReturnsMostRecentFilteredLines(t *testing.T) {
-	c := newServerConsole(nil)
+	c := newServerConsole(nil, nil)
 	c.publishLine("line one\n")
 	c.publishLine("FindFile: maps/e1m1.bsp\n")
 	c.publishLine("line two\n")
@@ -300,7 +300,7 @@ func TestServerConsoleRun_WritesTimestampedLogLines(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logFile.Close() })
 
-	c := newServerConsole(ptyRead)
+	c := newServerConsole(ptyRead, nil)
 	done := make(chan struct{})
 	go func() {
 		c.run(logFile, testFormatLogLine)
@@ -348,7 +348,7 @@ func TestServerConsoleRun_SuppressedEchoNotRecorded(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logFile.Close() })
 
-	c := newServerConsole(ptyRead)
+	c := newServerConsole(ptyRead, nil)
 	c.queueSuppressedRelayEchoLine("echo \"alice@example.com: status\"; wait; wait; wait; status;\n")
 
 	done := make(chan struct{})
@@ -391,7 +391,7 @@ func TestWriteCommandWithOptions_SuppressRelayEchoConsumesOnce(t *testing.T) {
 		_ = ptyWrite.Close()
 	})
 
-	c := newServerConsole(ptyWrite)
+	c := newServerConsole(nil, ptyWrite)
 	if err := c.writeCommandWithOptions(
 		"echo online and accepting clients",
 		true,

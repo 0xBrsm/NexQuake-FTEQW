@@ -347,7 +347,7 @@ func TestServerConsoleRelayEnabled_GatedUntilFirstServerInfo(t *testing.T) {
 	m := NewServerManager(t.TempDir(), t.TempDir(), nil, nil)
 	rec := m.registerBareInstance(serverLaunch{Line: 2})
 
-	console := newServerConsole(nil)
+	console := newServerConsole(nil, nil)
 	srv := &managedServer{Console: console}
 
 	m.mu.Lock()
@@ -386,7 +386,7 @@ func TestUpdateServerState_FirstServerInfoWritesOnlineEchoCommand(t *testing.T) 
 		_ = ptyWrite.Close()
 	})
 
-	console := newServerConsole(ptyWrite)
+	console := newServerConsole(nil, ptyWrite)
 	srv := &managedServer{Console: console}
 
 	m.mu.Lock()

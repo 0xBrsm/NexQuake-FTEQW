@@ -15,7 +15,7 @@ func NewTestServer(port int) *managedServer {
 	process, _ := os.FindProcess(os.Getpid())
 	srv := &managedServer{
 		Cmd:     &exec.Cmd{Process: process},
-		Console: newServerConsole(nil),
+		Console: newServerConsole(nil, nil),
 	}
 	return srv
 }
@@ -23,7 +23,7 @@ func NewTestServer(port int) *managedServer {
 // NewTestServerWithPTY creates a managed server stub with a writable console.
 func NewTestServerWithPTY(port int, pty *os.File) *managedServer {
 	srv := NewTestServer(port)
-	srv.Console = newServerConsole(pty)
+	srv.Console = newServerConsole(nil, pty)
 	return srv
 }
 

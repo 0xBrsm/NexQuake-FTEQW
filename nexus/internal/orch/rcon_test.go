@@ -49,7 +49,7 @@ func TestDispatchServerCmd_CapturesConsoleOutput(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ptyRead.Close(); _ = ptyWrite.Close() })
 
-	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(ptyWrite)}
+	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil, ptyWrite)}
 	go fakeServerWriteSentinels(t, ptyRead, srv.Console, "sv_maxspeed is \"320\"\n")
 
 	mgr := NewServerManager(t.TempDir(), t.TempDir(), nil, nil)
@@ -83,7 +83,7 @@ func TestDispatchServerCmd_FiltersNoisyConsoleOutput(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ptyRead.Close(); _ = ptyWrite.Close() })
 
-	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(ptyWrite)}
+	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil, ptyWrite)}
 	go fakeServerWriteSentinels(t, ptyRead, srv.Console,
 		"FindFile: maps/e1m1.bsp\n",
 		"sv_maxspeed is \"320\"\n",
@@ -125,7 +125,7 @@ func TestDispatchServerCmd_FramesCommandWithAuditPreambleAndSentinels(t *testing
 	}
 	t.Cleanup(func() { _ = ptyRead.Close(); _ = ptyWrite.Close() })
 
-	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(ptyWrite)}
+	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil, ptyWrite)}
 	wroteLine := make(chan string, 1)
 	go func() {
 		wroteLine <- fakeServerWriteSentinels(t, ptyRead, srv.Console, "host: ok\n")
@@ -174,7 +174,7 @@ func TestDispatchServerCmd_SuppressesPtyEchoFromReply(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ptyRead.Close(); _ = ptyWrite.Close() })
 
-	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(ptyWrite)}
+	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil, ptyWrite)}
 	go func() {
 		buf := make([]byte, 512)
 		n, _ := ptyRead.Read(buf)
@@ -210,7 +210,7 @@ func TestDispatchServerCmd_TailDefaultsToLastTenLines(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindProcess(self): %v", err)
 	}
-	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil)}
+	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil, nil)}
 	for i := 1; i <= 12; i++ {
 		srv.Console.publishLine(fmt.Sprintf("line %02d\n", i))
 	}
@@ -237,7 +237,7 @@ func TestDispatchServerCmd_TailUsesFilteredOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindProcess(self): %v", err)
 	}
-	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil)}
+	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil, nil)}
 	srv.Console.publishLine("line a\n")
 	srv.Console.publishLine("FindFile: maps/e1m1.bsp\n")
 	srv.Console.publishLine("PackFile: id1/pak0.pak : maps/e1m1.bsp\n")
@@ -266,7 +266,7 @@ func TestDispatchServerCmd_TailUsageError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindProcess(self): %v", err)
 	}
-	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil)}
+	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil, nil)}
 	mgr := NewServerManager(t.TempDir(), t.TempDir(), nil, nil)
 	rec := mgr.registerBareInstance(serverLaunch{Line: 0})
 	mgr.updatePort(rec, 26000)
@@ -292,7 +292,7 @@ func TestDispatchServerCmd_NoOutputUsesSuccessFallback(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ptyRead.Close(); _ = ptyWrite.Close() })
 
-	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(ptyWrite)}
+	srv := &managedServer{Cmd: &exec.Cmd{Process: process}, Console: newServerConsole(nil, ptyWrite)}
 	go fakeServerWriteSentinels(t, ptyRead, srv.Console)
 
 	mgr := NewServerManager(t.TempDir(), t.TempDir(), nil, nil)
