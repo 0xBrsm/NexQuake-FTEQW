@@ -215,13 +215,11 @@
   function fteCallMain() {
     console.info('[fte-bootstrap] calling Module.callMain()');
     try {
-      // FTE's Emscripten module honours Module.arguments as the argv list that
-      // was pre-built below; callMain([]) passes an empty additional array so
-      // the pre-built arguments array takes effect.
-      //
-      // TODO(real-build): if FTE ignores Module.arguments when callMain is used,
-      // switch to Module.callMain(Module.arguments) or Module._main(0,0).
-      Module.callMain([]);
+      // callMain(args) uses args as argv, OVERRIDING Module.arguments — so pass
+      // the pre-built argv (-manifest/-game/...) explicitly. callMain([]) here
+      // gave FTE no arguments, so it booted with no manifest/game ("no games
+      // known"). Pass Module.arguments so the manifest + game load.
+      Module.callMain(Module.arguments || []);
 
       // Hide the loader and show the canvas (mirrors Module.hideConsole in
       // the original shell).
@@ -356,6 +354,9 @@
     arguments: [
       '-manifest', manifestUrl,
       '-game',     gamedir,
+      // Render at the canvas/window size instead of a fixed 640x480 window.
+      '+set', 'vid_width', '0',
+      '+set', 'vid_height', '0',
       '+set', 'cl_web_connect_host', connectHost
     ],
 
