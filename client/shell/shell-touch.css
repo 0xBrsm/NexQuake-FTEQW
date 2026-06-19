@@ -1,0 +1,260 @@
+/* ─── Mobile Touch Controls ─── */
+#nq-touch-overlay {
+  --nq-touch-btn-size: 74px;
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 9990;
+  box-sizing: border-box;
+  padding: var(--nq-safe-top) var(--nq-safe-right) var(--nq-safe-bottom) var(--nq-safe-left);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+#nq-touch-overlay.nq-touch-idle {
+  pointer-events: none;
+}
+#nq-touch-overlay.nq-touch-idle #nq-touch-buttons,
+#nq-touch-overlay.nq-touch-idle #nq-touch-tap-zones,
+#nq-touch-overlay.nq-touch-idle #nq-joy-ring,
+#nq-touch-overlay.nq-touch-idle #nq-joy-knob {
+  opacity: 0;
+}
+#nq-touch-overlay.nq-touch-modal-open #nq-joy-ring,
+#nq-touch-overlay.nq-touch-modal-open #nq-joy-knob,
+#nq-touch-overlay.nq-touch-modal-open .nq-touch-btn {
+  display: none;
+}
+#nq-touch-overlay.nq-touch-text-entry-open .nq-touch-btn[data-touch-slot],
+#nq-touch-overlay.nq-touch-text-entry-open .nq-touch-menu-btn,
+#nq-touch-overlay.nq-touch-text-entry-open #nq-touch-tap-zones {
+  display: none;
+}
+#nq-touch-overlay.nq-touch-menu-mode:not(.nq-touch-menu-layout-mode) .nq-touch-btn[data-touch-slot],
+#nq-touch-overlay.nq-touch-menu-mode:not(.nq-touch-menu-layout-mode) .nq-touch-btn[data-touch-slot].nq-touch-btn-hidden {
+  display: none;
+}
+#nq-touch-overlay.nq-touch-menu-layout-mode:not(.nq-touch-modal-open):not(.nq-touch-text-entry-open) .nq-touch-btn[data-touch-slot] {
+  display: flex;
+  border-style: dotted;
+  border-color: rgba(255, 204, 128, 0.95);
+  box-shadow: 0 0 0 1px rgba(255, 204, 128, 0.32);
+}
+#nq-touch-overlay.nq-touch-menu-layout-mode:not(.nq-touch-modal-open):not(.nq-touch-text-entry-open) .nq-touch-btn[data-touch-slot].nq-touch-btn-hidden {
+  display: flex;
+}
+#nq-touch-tap-zones {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.nq-touch-tap-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+#nq-touch-tap-left {
+  left: 0;
+  width: 50%;
+  justify-content: flex-start;
+  padding-left: clamp(16px, 6vw, 120px);
+}
+#nq-touch-tap-right {
+  right: 0;
+  width: 50%;
+  justify-content: flex-end;
+  padding-right: clamp(16px, 6vw, 120px);
+}
+.nq-touch-tap-zone::after {
+  content: '';
+  width: clamp(93px, 15vw, 180px);
+  height: clamp(129px, 21vw, 252px);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 280' fill='none'%3E%3Cpath d='M152 26L140 39L128 51L118 63L108 74L100 84L93 94L87 103L82 111L78 118L75 124L74 130L73 134L74 136L74 137L74 144L73 146L74 150L75 156L78 162L82 169L87 177L93 186L100 196L108 206L118 217L128 229L140 241L152 254A8 8 0 0 1 142 266L128 254L115 243L103 232L92 221L82 212L74 202L66 194L59 185L53 177L48 169L43 162L40 154L38 146L38 137L38 134L40 126L43 118L48 111L53 103L59 95L66 86L74 78L82 68L92 59L103 48L115 37L128 26L142 14A8 8 0 0 1 152 26Z' fill='%23ffffff'/%3E%3C/svg%3E");
+}
+#nq-touch-tap-left::after {
+  transform: none;
+}
+#nq-touch-tap-right::after {
+  transform: scaleX(-1);
+}
+#nq-touch-overlay.nq-touch-menu-mode:not(.nq-touch-modal-open):not(.nq-touch-text-entry-open) #nq-touch-tap-zones {
+  display: block;
+}
+#nq-touch-overlay.nq-touch-flip #nq-touch-tap-left::after {
+  transform: scaleX(-1);
+}
+#nq-touch-overlay.nq-touch-flip #nq-touch-tap-right::after {
+  transform: none;
+}
+/* Virtual joystick — positioned from C via EM_JS */
+#nq-joy-ring {
+  display: none;
+  position: fixed;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  opacity: 0.8;
+}
+#nq-joy-knob {
+  display: none;
+  position: fixed;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  opacity: 0.8;
+}
+/* Action buttons */
+#nq-touch-buttons {
+  position: absolute;
+  inset: 0;
+}
+.nq-touch-btn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.0);
+  font-family: monospace;
+  font-weight: bold;
+  font-size: 0;
+  padding: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+  width: var(--nq-touch-btn-size);
+  height: var(--nq-touch-btn-size);
+  opacity: 0.3;
+}
+.nq-touch-menu-btn {
+  cursor: default;
+}
+#nq-touch-menu-m1 {
+  left: 4%;
+  top: 5%;
+}
+#nq-touch-menu-m2 {
+  left: 96%;
+  top: 5%;
+}
+.nq-touch-btn::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+.nq-touch-btn.nq-touch-btn-glyph {
+  font-family: 'DpQuake', 'Courier New', monospace;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 30px;
+}
+#nq-touch-menu-m2.nq-touch-btn-glyph {
+  font-size: 40px;
+}
+.nq-touch-btn.nq-touch-btn-glyph::after {
+  display: none;
+}
+.nq-touch-btn svg {
+  width: 60%;
+  height: 60%;
+  pointer-events: none;
+}
+.nq-touch-btn.active,
+.nq-touch-btn:active {
+  background: rgba(var(--nq-brand-color-standard-rgb), 0.5);
+  border-color: rgba(var(--nq-brand-color-highlight-rgb), 0.7);
+}
+.nq-touch-btn.active::after,
+.nq-touch-btn:active::after {
+  background: rgba(255, 235, 200, 0.9);
+}
+.nq-touch-btn.dragging {
+  cursor: grabbing;
+  border-style: dashed;
+  border-color: rgba(255, 204, 128, 0.95);
+  background: rgba(var(--nq-brand-color-standard-rgb), 0.35);
+}
+.nq-touch-btn-hidden {
+  display: none;
+}
+#nq-touch-overlay.nq-touch-layout-edit .nq-touch-btn[data-touch-slot] {
+  border-style: dotted;
+  border-color: rgba(255, 204, 128, 0.95);
+  box-shadow: 0 0 0 1px rgba(255, 204, 128, 0.32);
+}
+
+#nq-text-entry {
+  align-items: flex-start;
+  box-sizing: border-box;
+  justify-content: center;
+  left: 0;
+  padding: calc(var(--nq-safe-top) + 4px) calc(var(--nq-safe-right) + 8px) 0 calc(var(--nq-safe-left) + 8px);
+  position: fixed;
+  pointer-events: auto;
+  right: 0;
+  top: 0;
+  z-index: 9995;
+}
+
+#nq-text-entry-form {
+  align-items: center;
+  background: rgba(14, 20, 26, 0.88);
+  border: 1px solid rgba(255, 206, 138, 0.38);
+  border-radius: 8px;
+  display: flex;
+  min-height: 30px;
+  padding: 2px 6px;
+  width: min(100%, 280px);
+}
+
+#nq-text-entry-input {
+  background: transparent;
+  border: none;
+  caret-color: rgba(255, 206, 138, 0.7);
+  color: #f7f2e8;
+  flex: 1 1 auto;
+  font: 13px/1.1 'Courier New', monospace;
+  height: 22px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+#nq-text-entry-input:focus {
+  outline: none;
+}
+
+#nq-text-entry:not([hidden]) {
+  display: flex;
+}
+/* Landscape orientation: optimize layout */
+@media (orientation: landscape) and (max-height: 500px) {
+  #nq-touch-overlay {
+    --nq-touch-btn-size: 65px;
+  }
+  .nq-touch-btn {
+    width: 65px;
+    height: 65px;
+  }
+}

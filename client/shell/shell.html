@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0a0a">
+    <title>NexQuake</title>
+    <link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=3">
+    <link rel="shortcut icon" href="favicon.svg?v=3">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="nq-touch-icon-180.png">
+    <link rel="stylesheet" href="shell-nq.css">
+    <link rel="stylesheet" href="shell-loader.css">
+    <link rel="stylesheet" href="shell-ui.css">
+    <link rel="stylesheet" href="shell-touch.css">
+  </head>
+  <body>
+    <!-- NexQuake Loading Screen -->
+    <div id="nq-loader">
+      <div id="nq-loader-logo"><span class="nex"><span class="nq-n">N</span>ex</span><span class="quake"><span class="nq-q">Q</span>uake</span></div>
+      <div id="nq-loader-sub">WebAssembly</div>
+      <div id="nq-loader-action">
+        <div id="nq-loader-ring"></div>
+        <div id="nq-loader-progress"><div id="nq-loader-progress-bar"></div></div>
+        <button id="nq-loader-reload" class="hidden" type="button">ENTER</button>
+      </div>
+      <div id="nq-loader-status"></div>
+    </div>
+    <textarea class="emscripten" id="output" readonly></textarea>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+    <a id="exportFile" hidden=1></a>
+
+    <!-- Mobile Touch Controls (visual HUD only — all input handled in in_wasm.c) -->
+    <div id="nq-touch-overlay">
+      <div id="nq-touch-tap-zones" aria-hidden="true">
+        <div id="nq-touch-tap-left" class="nq-touch-tap-zone"></div>
+        <div id="nq-touch-tap-right" class="nq-touch-tap-zone"></div>
+      </div>
+      <div id="nq-joy-ring"></div>
+      <div id="nq-joy-knob"></div>
+<div id="nq-touch-buttons">
+        <button id="nq-touch-slot1" class="nq-touch-btn" data-touch-slot="1" type="button" aria-label="touch slot 1"></button>
+        <button id="nq-touch-slot2" class="nq-touch-btn" data-touch-slot="2" type="button" aria-label="touch slot 2"></button>
+        <button id="nq-touch-slot3" class="nq-touch-btn" data-touch-slot="3" type="button" aria-label="touch slot 3"></button>
+        <button id="nq-touch-slot4" class="nq-touch-btn" data-touch-slot="4" type="button" aria-label="touch slot 4"></button>
+        <button id="nq-touch-slot5" class="nq-touch-btn" data-touch-slot="5" type="button" aria-label="touch slot 5"></button>
+        <button id="nq-touch-slot6" class="nq-touch-btn" data-touch-slot="6" type="button" aria-label="touch slot 6"></button>
+        <button id="nq-touch-slot7" class="nq-touch-btn nq-touch-btn-hidden" data-touch-slot="7" type="button" aria-label="touch slot 7"></button>
+        <button id="nq-touch-slot8" class="nq-touch-btn nq-touch-btn-hidden" data-touch-slot="8" type="button" aria-label="touch slot 8"></button>
+        <button id="nq-touch-slot9" class="nq-touch-btn nq-touch-btn-hidden" data-touch-slot="9" type="button" aria-label="touch slot 9"></button>
+        <button id="nq-touch-menu-m1" class="nq-touch-btn nq-touch-menu-btn nq-touch-btn-glyph" type="button" aria-label="touchm1 menu back">Q</button>
+        <button id="nq-touch-menu-m2" class="nq-touch-btn nq-touch-menu-btn nq-touch-btn-glyph" type="button" aria-label="touchm2 overlay menu">&#9881;</button>
+      </div>
+    </div>
+    <div id="nq-text-entry" hidden>
+      <form id="nq-text-entry-form" role="dialog" aria-modal="true" aria-label="game text input">
+        <input id="nq-text-entry-input" type="text" autocapitalize="none" enterkeyhint="send">
+      </form>
+    </div>
+
+    <!-- Active transport indicator (lower-right gameplay chrome; set by
+         Module.nqSetTransport from net_wasm.c on transport adoption) -->
+    <div id="nq-transport" aria-hidden="true" title="double-click to toggle" hidden>
+      <div class="nq-transport-label">Connected by:</div>
+      <div class="nq-transport-name"></div>
+    </div>
+
+    <!-- NexQuake Settings Overlay -->
+    <button id="nq-overlay-toggle" type="button" tabindex="-1" title="NexQuake settings" aria-label="NexQuake settings">&#9881;</button>
+    <div id="nq-overlay-panel">
+      <div class="nq-tabs-wrap" id="nq-tabs-wrap">
+        <div id="nq-tabs-title"><span>GAME</span></div>
+        <div class="nq-tabs" id="nq-vfs-tabs"></div>
+      </div>
+      <div id="nq-panel-content">
+        <h3 id="nq-dir-header">Game Files <span id="nq-dir-label"></span><button id="nq-overlay-close" type="button" title="close settings" aria-label="close settings"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg></button></h3>
+        <ul id="nq-vfs-list"></ul>
+        <div id="nq-panel-footer">
+          <div id="nq-config-row">
+            <div id="nq-upload-error" aria-live="polite"></div>
+            <div id="nq-config-global-wrap">
+              <button id="nq-config-global" type="button" title="global cfgs enabled" aria-label="global cfgs enabled"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg></button>
+            </div>
+            <div id="nq-cd-row">
+              <button class="nq-cd-btn" data-cd-command="eject" title="track list" aria-label="track list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 6 18 14 6 14"/><line x1="6" y1="18" x2="18" y2="18"/></svg></button>
+              <button class="nq-cd-btn" data-cd-command="pause-toggle" title="cd resume" aria-label="cd resume"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 20,12 8,19"/></svg></button>
+              <button class="nq-cd-btn" data-cd-command="stop" title="cd stop" aria-label="cd stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10"/></svg></button>
+              <button class="nq-cd-btn" data-cd-command="toggle" title="cd on/off" aria-label="cd on/off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"/><path d="M7.7 6.7a7 7 0 1 0 8.6 0"/></svg></button>
+            </div>
+            <div id="nq-upload-wrap">
+              <button id="nq-vfs-upload" type="button" title="upload files" aria-label="upload files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>
+              <input type="file" id="nq-vfs-file" style="display:none" multiple>
+            </div>
+          </div>
+          <div id="nq-branding-row">
+            <a id="nq-branding" href="https://quake.nexus" target="_blank" rel="noopener noreferrer" title="Help / Documentation" aria-label="Help / Documentation"><span class="nq-nex"><span class="nq-n">N</span>ex</span><span class="nq-q">Q</span>uake</a>
+            <button id="nq-join-code" type="button" hidden>
+              <span class="nq-join-code-label">join code</span>
+              <span id="nq-join-code-value"></span>
+            </button>
+            <div id="nq-version">v__NEXQUAKE_VERSION__</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Full-window cfg editor -->
+    <div id="nq-editor">
+      <div id="nq-editor-path"></div>
+      <textarea id="nq-editor-text" spellcheck="false"></textarea>
+      <div id="nq-editor-btns">
+        <button class="nq-btn" id="nq-editor-save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button>
+        <button class="nq-btn" id="nq-editor-cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Cancel</button>
+      </div>
+    </div>
+
+    <!-- Top-level confirm / admin-notice modal. Must live OUTSIDE the overlay
+         panel so it renders even when the panel is closed (e.g. the rcon login
+         toast, which deliberately suppresses the panel). -->
+    <div id="nq-confirm" aria-hidden="true">
+      <div id="nq-confirm-card" role="dialog" aria-modal="true" aria-labelledby="nq-confirm-text">
+        <div id="nq-confirm-text"></div>
+        <div id="nq-confirm-actions">
+          <button class="nq-btn" id="nq-confirm-ok" type="button">confirm</button>
+          <button class="nq-btn" id="nq-confirm-cancel" type="button">cancel</button>
+        </div>
+      </div>
+    </div>
+
+    {{{ SCRIPT }}}
+  </body>
+</html>

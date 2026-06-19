@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-734 -1387 2300 2300">
+  <rect x="-734" y="-1387" width="2300" height="2300" fill="#0a0a0a"/>
+  <defs>
+    <path id="q-glyph" d="M597 787Q684 737 734.0 654.5Q784 572 784 473Q784 328 690 226Q623 154 542 133Q523 128 472 117V220Q472 241 475 257Q481 289 518 295Q519 297 512 297H331Q334 297 336 295Q367 290 374 257Q375 237 375 221V117Q352 118 309 133Q226 153 158 230Q92 304 75 390Q67 431 67 473Q67 588 132 678Q180 744 253 787Q184 762 129 697Q78 638 53 564Q26 486 26 404Q26 208 178 82Q266 9 375 -2V-107Q380 -121 430 -343Q445 -237 463 -154Q472 -112 472 -106V-3Q584 9 674 83Q761 155 801 263Q825 327 825 404Q825 492 794 576Q734 735 597 787Z"/>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <clipPath id="q-center">
+      <circle cx="460" cy="430" r="355"/>
+    </clipPath>
+  </defs>
+  <g transform="scale(1,-1)">
+    <g transform="translate(120, -120)">
+      <use href="#q-glyph" fill="#f0f0f0" stroke="#f0f0f0" stroke-width="50" stroke-linejoin="round"/>
+    </g>
+    <g transform="translate(-120, 40)" filter="url(#glow)">
+      <path d="M684 -53 133 625V89Q130 57 146.0 33.0Q162 9 193 4H31Q86 13 86 89V710Q86 730 79 751Q65 793 30 795H251Q223 787 223 759Q223 746 229 732L637 223V711Q637 778 577 795H738Q684 785 684 711Z" fill="#f08030" stroke="#f08030" stroke-width="50" stroke-linejoin="round"/>
+    </g>
+    <g transform="translate(120, -120)">
+      <g clip-path="url(#q-center)">
+        <use href="#q-glyph" fill="#f0f0f0" stroke="#f0f0f0" stroke-width="50" stroke-linejoin="round"/>
+      </g>
+    </g>
+  </g>
+</svg>
