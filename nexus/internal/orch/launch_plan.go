@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,46 @@ var unsupportedLaunchArgs = map[string]struct{}{
 	"-hipnotic": {},
 	"-path":     {},
 	"-rogue":    {},
+}
+
+// parseFixedListenPort extracts a pinned UDP listen port from launch args, if
+// one is set explicitly: "-port N" / "+port N" / "+sv_port N" / "+set sv_port N"
+// (or the bare "port" cvar). It returns false for an ephemeral/unset port (0 or
+// absent), where the bound port must be discovered at runtime instead.
+//
+// fteqw-sv's startup banner and port cvar differ from nqserver's, so the
+// console-based port resolver (monitorServerStartup) never fires for it. When
+// the launch pins a port, reading it here lets the info poller reach the server
+// without that resolver — otherwise awaitingServerInfo never clears and every
+// healthy launch logs a spurious startup timeout.
+func parseFixedListenPort(args []string) (int, bool) {
+	atoiPort := func(s string) (int, bool) {
+		p, err := strconv.Atoi(strings.TrimSpace(s))
+		if err != nil || p < 1 || p > 65535 {
+			return 0, false
+		}
+		return p, true
+	}
+	for i := 0; i < len(args); i++ {
+		switch strings.ToLower(strings.TrimSpace(args[i])) {
+		case "-port", "+port", "+sv_port":
+			if i+1 < len(args) {
+				if p, ok := atoiPort(args[i+1]); ok {
+					return p, true
+				}
+			}
+		case "+set":
+			if i+2 < len(args) {
+				switch strings.ToLower(strings.TrimSpace(args[i+1])) {
+				case "sv_port", "port":
+					if p, ok := atoiPort(args[i+2]); ok {
+						return p, true
+					}
+				}
+			}
+		}
+	}
+	return 0, false
 }
 
 func (m *ServerManager) planLaunches() ([]serverLaunch, []string, error) {

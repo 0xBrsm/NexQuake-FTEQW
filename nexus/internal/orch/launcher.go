@@ -15,7 +15,15 @@ import (
 	"github.com/0xBrsm/NexQuake/nexus/internal/assets"
 )
 
-const serverStartupCCREPTimeout = 10 * time.Second
+// serverStartupInfoTimeout is the grace period for a freshly launched server to
+// answer its first status query (getinfo) before we log a startup warning. A
+// cold fteqw-sv loads its paks and spawns the initial map before it replies, and
+// that reliably takes longer than 10s in a container, so the old 10s tripped a
+// spurious "failed to start" on every healthy launch. The check is advisory
+// only — it never kills or restarts the server — so a generous bound just
+// suppresses the false alarm. (Named for getinfo now; FTE answers dpmaster-style
+// getinfo, not NetQuake CCREP.)
+const serverStartupCCREPTimeout = 30 * time.Second
 
 func resetRecordStartupState(rec *instance) {
 	rec.relayConsoleReady = false
@@ -140,6 +148,16 @@ func (m *ServerManager) startRecord(rec *instance) error {
 	rec.LastSeen = time.Time{}
 	m.mu.Unlock()
 	m.resetServerInstanceState(rec.id)
+
+	// Seed a pinned listen port so the info poller can reach the server even
+	// though fteqw-sv's console banner/cvars don't drive the nqserver-style
+	// console port resolver. Without this the poller never polls the server,
+	// awaitingServerInfo never clears, and the launch logs a false startup
+	// timeout. An ephemeral ("-port 0") server still relies on runtime
+	// resolution and returns ok=false here.
+	if port, ok := parseFixedListenPort(launch.Args); ok {
+		m.updatePort(rec, port)
+	}
 
 	go m.relayServerConsoleToNexus(rec, srv.Console)
 	go m.monitorServerStartupTimeout(rec, srv, serverStartupCCREPTimeout)

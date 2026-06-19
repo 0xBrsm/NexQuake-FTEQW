@@ -479,3 +479,30 @@ func TestPlanLaunches_LeavesBareNQServerUnchanged(t *testing.T) {
 		t.Fatalf("expected args to remain unchanged (no auto -port), got %v", launches[0].Args)
 	}
 }
+
+func TestParseFixedListenPort(t *testing.T) {
+	cases := []struct {
+		name     string
+		args     []string
+		wantPort int
+		wantOK   bool
+	}{
+		{"set sv_port", []string{"-dedicated", "-game", "id1", "+set", "sv_port", "27500", "+map", "start"}, 27500, true},
+		{"set port", []string{"+set", "port", "26010"}, 26010, true},
+		{"dash port", []string{"-dedicated", "-port", "27600"}, 27600, true},
+		{"plus sv_port", []string{"+sv_port", "27700"}, 27700, true},
+		{"ephemeral zero", []string{"-port", "0"}, 0, false},
+		{"absent", []string{"-dedicated", "-game", "id1", "+map", "start"}, 0, false},
+		{"out of range", []string{"+set", "sv_port", "70000"}, 0, false},
+		{"non numeric", []string{"+set", "sv_port", "abc"}, 0, false},
+		{"missing value", []string{"+set", "sv_port"}, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			port, ok := parseFixedListenPort(tc.args)
+			if ok != tc.wantOK || port != tc.wantPort {
+				t.Fatalf("parseFixedListenPort(%v) = (%d, %v), want (%d, %v)", tc.args, port, ok, tc.wantPort, tc.wantOK)
+			}
+		})
+	}
+}
